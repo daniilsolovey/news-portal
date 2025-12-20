@@ -1,0 +1,9 @@
+# Build output
+news-portal
+
+# IDE
+.idea/
+.vscode/
+
+# Environment files
+.env.dev

@@ -1,0 +1,194 @@
+# News Portal Template
+
+A Go-based microservice template with clean architecture, dependency injection (Wire), and PostgreSQL support.
+
+## ⚙️ Architecture
+
+```
+                ┌────────────┐
+                │   Client   │
+                └─────┬──────┘
+                      │ HTTP (Gin)
+                ┌─────▼──────┐
+                │  Delivery  │  ← HTTP handlers, Swagger
+                └─────┬──────┘
+                      │
+                ┌─────▼──────┐
+                │  UseCase   │  ← Business logic
+                └─────┬──────┘
+                      │
+            ┌─────────▼─────────┐
+            │     Repository    │  ← PostgreSQL access
+            └────────┬──────────┘
+                     │
+       ┌─────────────▼─────────────┐
+       │ PostgreSQL (storage)      │
+       └───────────────────────────┘
+```
+
+## 📁 Project Structure
+
+```
+.
+├── cmd/app              # Entry-point and dependency initialization (Wire)
+│   └── wire            # Dependency injection setup
+├── configs              # Application configuration (Viper)
+├── internal
+│   ├── delivery         # HTTP endpoints (Gin handlers)
+│   ├── usecase          # Business logic layer
+│   ├── domain           # Domain models and conversions
+│   └── repository       # Data access layer
+│       └── postgres     # PostgreSQL implementation
+├── docs                 # Swagger documentation
+├── envs                 # .env files
+├── migrations           # Database migrations
+├── Makefile             # Build/run commands
+└── docker-compose.yml   # Docker infrastructure
+```
+
+## 🚀 Quick Start
+
+Make sure you have `Docker`, `Make`, `Go`, and `Swag` installed.
+
+### Start the service
+
+```bash
+make up
+```
+
+The default environment file is `./envs/.env.dev`.
+
+### Stop the service
+
+```bash
+make down
+```
+
+### Restart
+
+```bash
+make restart
+```
+
+## 🛠 Development
+
+### Build the binary
+
+```bash
+make build
+```
+
+### Run the app locally
+
+```bash
+make run
+```
+
+### Format, validate and manage dependencies
+
+```bash
+make fmt     # go fmt ./...
+make vet     # go vet ./...
+make tidy    # go mod tidy
+```
+
+### Run tests
+
+```bash
+make test
+```
+
+### Regenerate Wire dependencies
+
+```bash
+cd cmd/app/wire && go generate
+```
+
+## 📚 Swagger Documentation
+
+To generate:
+
+```bash
+make swag
+```
+
+Available after startup at:
+
+```
+http://localhost:3000/swagger/index.html
+```
+
+## 📝 Example Makefile Commands
+
+```bash
+make up      # start containers
+make logs    # view logs
+make swag    # generate Swagger
+make build   # build Go binary
+```
+
+## 🏗 Template Features
+
+- **Clean Architecture**: Separation of concerns with delivery, usecase, and repository layers
+- **Dependency Injection**: Google Wire for compile-time DI
+- **Database Support**: PostgreSQL with connection pooling
+- **API**: REST API with Gin framework
+- **Graceful Shutdown**: Graceful shutdown with 5-second timeout for HTTP server
+- **Documentation**: Swagger/OpenAPI documentation
+- **Configuration**: Viper for configuration management
+- **Migrations**: Database migration support
+
+## 🔧 Configuration
+
+Configuration is managed via environment variables or `.env` files. Default values are set in `configs/config.go`.
+
+Key environment variables:
+- `HTTP_PORT` - HTTP server port (default: 3000)
+- `DATABASE_URL` - PostgreSQL connection string
+- `DB_MAX_CONNS` - Maximum number of database connections (default: 5)
+- `DB_MAX_CONN_LIFETIME` - Maximum connection lifetime (default: 300s)
+
+## 🔌 Dependency Injection (Wire)
+
+This project uses [Google Wire](https://github.com/google/wire) for dependency injection at compile time. All application components are initialized through Wire providers.
+
+### Initialization Flow
+
+Wire automatically resolves and initializes dependencies in the following order:
+
+1. **Logger** (`ProvideLogger`) - Creates structured logger
+2. **PostgreSQL Repository** (`ProvidePostgres`) - Initializes database connection pool
+3. **Repository** (`ProvideRepository`) - Creates repository interface wrapper
+4. **UseCase** (`ProvideUseCase`) - Initializes business logic layer with repository and logger
+5. **Handler** (`ProvideHandler`) - Creates HTTP handlers with usecase and logger
+6. **Engine** (`ProvideEngine`) - Creates Gin router with all registered routes
+
+### Service Structure
+
+The `wire.Service` struct contains all initialized components:
+
+```go
+type Service struct {
+    Postgres *postgres.Repository
+    Logger   *slog.Logger
+    Engine   *gin.Engine
+}
+```
+
+### Adding New Providers
+
+To add new dependencies via Wire:
+
+1. Create a provider function in `cmd/app/wire/providers.go`
+2. Add it to `wire.Build()` in `cmd/app/wire/wire.go`
+3. Regenerate Wire code: `cd cmd/app/wire && go generate`
+
+## 📦 Adding New Features
+
+1. **Domain Models**: Add to `internal/domain/`
+2. **Business Logic**: Implement in `internal/usecase/`
+3. **HTTP Handlers**: Add to `internal/delivery/`
+4. **Database Operations**: Implement in `internal/repository/postgres/`
+5. **Routes**: Register in your handler's `RegisterRoutes()` method
+
+---
