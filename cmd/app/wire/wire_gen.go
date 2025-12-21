@@ -16,7 +16,7 @@ import (
 
 func Initialize() (*Service, func(), error) {
 	logger := ProvideLogger()
-	repository, err := ProvidePostgres(logger)
+	repository, cleanup, err := ProvidePostgres(logger)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -30,6 +30,7 @@ func Initialize() (*Service, func(), error) {
 		Engine:   engine,
 	}
 	return service, func() {
+		cleanup()
 	}, nil
 }
 

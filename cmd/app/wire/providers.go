@@ -15,14 +15,14 @@ import (
 	"github.com/spf13/viper"
 )
 
-func ProvidePostgres(logger *slog.Logger) (*postgres.Repository, error) {
+func ProvidePostgres(logger *slog.Logger) (*postgres.Repository, func(), error) {
 	ctx := context.Background()
 	url := viper.GetString("DATABASE_URL")
 
 	cfg, err := pgxpool.ParseConfig(url)
 	if err != nil {
 		logger.Error("failed to parse database URL", "error", err)
-		return nil, err
+		return nil, nil, err
 	}
 
 	cfg.MaxConns = int32(viper.GetInt("DB_MAX_CONNS"))
@@ -30,17 +30,22 @@ func ProvidePostgres(logger *slog.Logger) (*postgres.Repository, error) {
 	lifetime, err := time.ParseDuration(lifetimeStr)
 	if err != nil {
 		logger.Error("failed to parse DB_MAX_CONN_LIFETIME", "error", err, "value", lifetimeStr)
-		return nil, err
+		return nil, nil, err
 	}
 	cfg.MaxConnLifetime = lifetime
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		logger.Error("failed to create postgres connection pool", "error", err)
-		return nil, err
+		return nil, nil, err
 	}
 
-	return postgres.New(pool, logger), nil
+	repo := postgres.New(pool, logger)
+	cleanup := func() {
+		repo.Close()
+	}
+
+	return repo, cleanup, nil
 }
 
 func ProvideLogger() *slog.Logger {
