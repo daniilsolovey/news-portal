@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/daniilsolovey/news-portal/internal/domain"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 )
 
 type IRepository interface {
@@ -18,12 +18,23 @@ type IRepository interface {
 	GetAllTags(ctx context.Context) ([]domain.Tag, error)
 }
 
+// DBPool defines the interface for database pool operations
+// This interface allows using both real pgxpool.Pool and mock pools in tests
+type DBPool interface {
+	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
+	Ping(ctx context.Context) error
+	Close()
+}
+
 type Repository struct {
-	pool *pgxpool.Pool
+	pool DBPool
 	log  *slog.Logger
 }
 
-func New(pool *pgxpool.Pool, logger *slog.Logger) *Repository {
+// New creates a new Repository with a DBPool interface
+// Works with both *pgxpool.Pool (production) and pgxmock.PgxPoolIface (testing)
+func New(pool DBPool, logger *slog.Logger) *Repository {
 	return &Repository{
 		pool: pool,
 		log:  logger,
