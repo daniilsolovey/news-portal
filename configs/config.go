@@ -28,7 +28,7 @@ func Init() {
 	viper.SetDefault("SERVICE_NAME", "news-portal")
 	viper.SetDefault("HTTP_PORT", "3000")
 	viper.SetDefault(
-		"DATABASE_URL", "postgres://user:password@localhost:5432/app_db?sslmode=disable")
+		"DATABASE_URL", "postgres://user:password@localhost:5432/news_portal?sslmode=disable")
 	viper.SetDefault("DB_MAX_CONNS", 5)
 	viper.SetDefault("DB_MAX_CONN_LIFETIME", "300s")
 }
