@@ -36,13 +36,13 @@ ENV HTTP_PORT=3000
 EXPOSE 3000
 
 # Run migrations, then start app
-CMD /bin/sh -c '\
-  echo "Waiting for PostgreSQL..."; \
+CMD /bin/sh -c " \
+  echo 'Waiting for PostgreSQL...'; \
   until pg_isready -h postgres -p 5432 -U user; do \
-    echo "PostgreSQL is unavailable - sleeping"; \
+    echo 'PostgreSQL is unavailable - sleeping'; \
     sleep 2; \
   done; \
-  echo "PostgreSQL is up - running migrations..."; \
-  goose -dir ./migrations postgres "$$DATABASE_URL" up || exit 1; \
-  echo "Migrations completed. Starting app..."; \
-  ./news-portal'
+  echo 'PostgreSQL is up - running migrations...'; \
+  goose -dir ./migrations postgres \"\$DATABASE_URL\" up || exit 1; \
+  echo 'Migrations completed. Starting app...'; \
+  ./news-portal"
