@@ -27,6 +27,7 @@ RUN apk --no-cache add ca-certificates postgresql-client
 COPY --from=builder /app/news-portal ./news-portal
 COPY --from=builder /go/bin/goose /usr/local/bin/goose
 COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/frontend ./frontend
 
 # ENV
 ENV DATABASE_URL="postgres://user:password@postgres:5432/news_portal?sslmode=disable"
