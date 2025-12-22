@@ -1,10 +1,10 @@
-# News Portal Template
+# News Portal
 
 A Go-based microservice template with clean architecture, dependency injection (Wire), and PostgreSQL support.
 
 ## 🎥 Demo
 
-<video src="assets/images/news-portal-demo.webm" controls width="100%"></video>
+![Demo](assets/images/news-portal-demo.png)
 
 ## ⚙️ Architecture
 
