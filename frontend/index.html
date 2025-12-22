@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>News Portal - Frontend</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📰 News Portal</h1>
+            <p class="subtitle">Интерфейс для работы с API новостного портала</p>
+        </header>
+
+        <div class="api-section">
+            <h2>🔍 Получить все новости</h2>
+            <div class="form-group">
+                <label>Tag ID (опционально):</label>
+                <input type="number" id="allNewsTagId" placeholder="Например: 1">
+            </div>
+            <div class="form-group">
+                <label>Category ID (опционально):</label>
+                <input type="number" id="allNewsCategoryId" placeholder="Например: 1">
+            </div>
+            <div class="form-group">
+                <label>Страница:</label>
+                <input type="number" id="allNewsPage" value="1" min="1">
+            </div>
+            <div class="form-group">
+                <label>Размер страницы:</label>
+                <input type="number" id="allNewsPageSize" value="10" min="1" max="100">
+            </div>
+            <button onclick="getAllNews()">Получить новости</button>
+            <div id="allNewsResult" class="result"></div>
+        </div>
+
+        <div class="api-section">
+            <h2>📊 Получить количество новостей</h2>
+            <div class="form-group">
+                <label>Tag ID (опционально):</label>
+                <input type="number" id="countTagId" placeholder="Например: 1">
+            </div>
+            <div class="form-group">
+                <label>Category ID (опционально):</label>
+                <input type="number" id="countCategoryId" placeholder="Например: 1">
+            </div>
+            <button onclick="getNewsCount()">Получить количество</button>
+            <div id="countResult" class="result"></div>
+        </div>
+
+        <div class="api-section">
+            <h2>📄 Получить новость по ID</h2>
+            <div class="form-group">
+                <label>News ID:</label>
+                <input type="number" id="newsId" placeholder="Например: 1" required>
+            </div>
+            <button onclick="getNewsById()">Получить новость</button>
+            <div id="newsByIdResult" class="result"></div>
+        </div>
+
+        <div class="api-section">
+            <h2>📁 Получить все категории</h2>
+            <button onclick="getAllCategories()">Получить категории</button>
+            <div id="categoriesResult" class="result"></div>
+        </div>
+
+        <div class="api-section">
+            <h2>🏷️ Получить все теги</h2>
+            <button onclick="getAllTags()">Получить теги</button>
+            <div id="tagsResult" class="result"></div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
+

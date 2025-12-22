@@ -12,6 +12,11 @@ import (
 func (h *NewsHandler) RegisterRoutes() *gin.Engine {
 	r := gin.Default()
 
+	// Serve static files from frontend directory
+	r.Static("/static", "./frontend")
+	r.StaticFile("/", "./frontend/index.html")
+	r.StaticFile("/index.html", "./frontend/index.html")
+
 	// Swagger UI
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
