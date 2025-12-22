@@ -21,9 +21,9 @@ func Initialize() (*Service, func(), error) {
 		return nil, nil, err
 	}
 	iRepository := ProvideRepository(repository)
-	templateUseCase := ProvideUseCase(iRepository, logger)
-	templateHandler := ProvideHandler(templateUseCase, logger)
-	engine := ProvideEngine(templateHandler)
+	newsUseCase := ProvideUseCase(iRepository, logger)
+	newsHandler := ProvideHandler(newsUseCase, logger)
+	engine := ProvideEngine(newsHandler)
 	service := &Service{
 		Postgres: repository,
 		Logger:   logger,

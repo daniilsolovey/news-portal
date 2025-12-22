@@ -11,12 +11,12 @@ import (
 
 // NewsHandler handles HTTP requests
 type NewsHandler struct {
-	uc  *usecase.NewsUseCase
+	uc  usecase.INewsUseCase
 	log *slog.Logger
 }
 
 // NewNewsHandler creates a new instance of NewsHandler
-func NewNewsHandler(uc *usecase.NewsUseCase, log *slog.Logger) *NewsHandler {
+func NewNewsHandler(uc usecase.INewsUseCase, log *slog.Logger) *NewsHandler {
 	return &NewsHandler{
 		uc:  uc,
 		log: log,
