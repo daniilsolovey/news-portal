@@ -4,7 +4,7 @@ A Go-based microservice template with clean architecture, dependency injection (
 
 ## 🎥 Demo
 
-![Demo](assets/images/news-portal-demo.webm)
+![Demo](assets/images/news-portal-demo.png)
 
 ## ⚙️ Architecture
 
