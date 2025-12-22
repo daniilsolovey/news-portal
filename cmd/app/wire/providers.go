@@ -60,14 +60,14 @@ func ProvideRepository(pg *postgres.Repository) repository.IRepository {
 	return repository.New(pg)
 }
 
-func ProvideUseCase(repo repository.IRepository, logger *slog.Logger) *usecase.TemplateUseCase {
-	return usecase.NewTemplateUseCase(repo, logger)
+func ProvideUseCase(repo repository.IRepository, logger *slog.Logger) *usecase.NewsUseCase {
+	return usecase.NewNewsUseCase(repo, logger)
 }
 
-func ProvideHandler(uc *usecase.TemplateUseCase, logger *slog.Logger) *delivery.TemplateHandler {
-	return delivery.NewTemplateHandler(uc, logger)
+func ProvideHandler(uc *usecase.NewsUseCase, logger *slog.Logger) *delivery.NewsHandler {
+	return delivery.NewNewsHandler(uc, logger)
 }
 
-func ProvideEngine(handler *delivery.TemplateHandler) *gin.Engine {
+func ProvideEngine(handler *delivery.NewsHandler) *gin.Engine {
 	return handler.RegisterRoutes()
 }

@@ -6,13 +6,13 @@ ENV_FILE := ./envs/.env.dev
 # Docker
 .PHONY: up down restart logs
 
-up:
+docker-up:
 	docker-compose --env-file $(ENV_FILE) up --build
 
-down:
+docker-down:
 	docker-compose --env-file $(ENV_FILE) down
 
-restart: down up
+restart: docker-down docker-up
 
 logs:
 	docker-compose --env-file $(ENV_FILE) logs -f

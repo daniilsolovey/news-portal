@@ -27,3 +27,16 @@ type News struct {
 	Category    Category   `json:"category"`
 	Tags        []Tag      `json:"tags"`
 }
+
+// NewsSummary represents a news item without content field
+type NewsSummary struct {
+	NewsID      int        `json:"newsId"`
+	CategoryID  int        `json:"categoryId"`
+	Title       string     `json:"title"`
+	Author      string     `json:"author"`
+	PublishedAt time.Time  `json:"publishedAt"`
+	UpdatedAt   *time.Time `json:"updatedAt,omitempty"`
+	StatusID    int        `json:"statusId"`
+	Category    Category   `json:"category"`
+	Tags        []Tag      `json:"tags"`
+}

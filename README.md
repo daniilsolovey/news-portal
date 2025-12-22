@@ -53,7 +53,7 @@ Make sure you have `Docker`, `Make`, `Go`, and `Swag` installed.
 ### Start the service
 
 ```bash
-make up
+make docker-up
 ```
 
 The default environment file is `./envs/.env.dev`.
@@ -61,7 +61,7 @@ The default environment file is `./envs/.env.dev`.
 ### Stop the service
 
 ```bash
-make down
+make docker-down
 ```
 
 ### Restart
@@ -118,13 +118,28 @@ Available after startup at:
 http://localhost:3000/swagger/index.html
 ```
 
+## 🔌 API Endpoints
+
+The service provides the following REST API endpoints:
+
+- `GET /api/v1/all_news` - Get all news with optional filtering by tagId and categoryId, with pagination
+- `GET /api/v1/count` - Get total count of news items
+- `GET /api/v1/news/:id` - Get news item by ID with full content
+- `GET /api/v1/categories` - Get all categories
+- `GET /api/v1/tags` - Get all tags
+- `GET /health` - Health check endpoint
+- `GET /swagger/*any` - Swagger documentation UI
+
 ## 📝 Example Makefile Commands
 
 ```bash
-make up      # start containers
-make logs    # view logs
-make swag    # generate Swagger
-make build   # build Go binary
+make docker-up    # start containers
+make docker-down  # stop containers
+make logs         # view logs
+make swag         # generate Swagger
+make build        # build Go binary
+make run          # run application locally
+make test         # run tests
 ```
 
 ## 🏗 Template Features
@@ -147,6 +162,28 @@ Key environment variables:
 - `DATABASE_URL` - PostgreSQL connection string
 - `DB_MAX_CONNS` - Maximum number of database connections (default: 5)
 - `DB_MAX_CONN_LIFETIME` - Maximum connection lifetime (default: 300s)
+
+## 🗄 Database Migrations
+
+The project uses [goose](https://github.com/pressly/goose) for database migrations. Migrations are located in the `migrations/` directory.
+
+### Automatic Migrations (Docker)
+
+When running with Docker (`make docker-up`), migrations are automatically executed before the application starts. The Dockerfile includes goose and runs migrations on container startup.
+
+### Manual Migrations
+
+To run migrations manually, you need to have goose installed:
+
+```bash
+go install github.com/pressly/goose/v3/cmd/goose@latest
+```
+
+Then run migrations:
+
+```bash
+goose -dir ./migrations postgres "postgres://user:password@localhost:5432/news_portal?sslmode=disable" up
+```
 
 ## 🔌 Dependency Injection (Wire)
 

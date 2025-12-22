@@ -1,0 +1,239 @@
+basePath: /
+definitions:
+  domain.Category:
+    properties:
+      categoryId:
+        type: integer
+      orderNumber:
+        type: integer
+      statusId:
+        type: integer
+      title:
+        type: string
+    type: object
+  domain.News:
+    properties:
+      author:
+        type: string
+      category:
+        $ref: '#/definitions/domain.Category'
+      categoryId:
+        type: integer
+      content:
+        type: string
+      newsId:
+        type: integer
+      publishedAt:
+        type: string
+      statusId:
+        type: integer
+      tags:
+        items:
+          $ref: '#/definitions/domain.Tag'
+        type: array
+      title:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  domain.NewsSummary:
+    properties:
+      author:
+        type: string
+      category:
+        $ref: '#/definitions/domain.Category'
+      categoryId:
+        type: integer
+      newsId:
+        type: integer
+      publishedAt:
+        type: string
+      statusId:
+        type: integer
+      tags:
+        items:
+          $ref: '#/definitions/domain.Tag'
+        type: array
+      title:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  domain.Tag:
+    properties:
+      statusId:
+        type: integer
+      tagId:
+        type: integer
+      title:
+        type: string
+    type: object
+host: localhost:3000
+info:
+  contact: {}
+  description: Template API for news portal
+  title: News Portal API
+  version: "1.0"
+paths:
+  /api/v1/all_news:
+    get:
+      description: Retrieves news with optional filtering by tagId and categoryId,
+        with pagination. Returns NewsSummary (without content) sorted by publishedAt
+        DESC
+      parameters:
+      - description: Filter by tag ID
+        in: query
+        name: tagId
+        type: integer
+      - description: Filter by category ID
+        in: query
+        name: categoryId
+        type: integer
+      - description: 'Page number (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Page size (default: 10)'
+        in: query
+        name: pageSize
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.NewsSummary'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get all news
+      tags:
+      - news
+  /api/v1/categories:
+    get:
+      description: Retrieves all categories ordered by orderNumber
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.Category'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get all categories
+      tags:
+      - categories
+  /api/v1/count:
+    get:
+      description: Returns the count of news matching the optional tagId and categoryId
+        filters
+      parameters:
+      - description: Filter by tag ID
+        in: query
+        name: tagId
+        type: integer
+      - description: Filter by category ID
+        in: query
+        name: categoryId
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: integer
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get news count
+      tags:
+      - news
+  /api/v1/news/{id}:
+    get:
+      description: Retrieves a single news item by ID with full content, category
+        and tags
+      parameters:
+      - description: News ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.News'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get news by ID
+      tags:
+      - news
+  /api/v1/tags:
+    get:
+      description: Retrieves all tags ordered by title
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.Tag'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get all tags
+      tags:
+      - tags
+swagger: "2.0"
