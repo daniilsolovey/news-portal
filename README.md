@@ -2,15 +2,20 @@
 
 A Go-based microservice template with clean architecture, dependency injection (Wire), and PostgreSQL support.
 
+## 🎥 Demo
+
+<video src="assets/images/news-portal-demo.webm" controls width="100%"></video>
+
 ## ⚙️ Architecture
 
 ```
                 ┌────────────┐
                 │   Client   │
+                │  (Browser) │
                 └─────┬──────┘
                       │ HTTP (Gin)
                 ┌─────▼──────┐
-                │  Delivery  │  ← HTTP handlers, Swagger
+                │  Delivery  │  ← HTTP handlers, Static files, Swagger
                 └─────┬──────┘
                       │
                 ┌─────▼──────┐
@@ -39,6 +44,10 @@ A Go-based microservice template with clean architecture, dependency injection (
 │   ├── domain           # Domain models and conversions
 │   └── repository       # Data access layer
 │       └── postgres     # PostgreSQL implementation
+├── frontend             # Frontend web interface
+│   ├── index.html       # Main HTML page
+│   ├── app.js           # JavaScript application logic
+│   └── styles.css       # CSS styles
 ├── docs                 # Swagger documentation
 ├── envs                 # .env files
 ├── migrations           # Database migrations
@@ -118,10 +127,49 @@ Available after startup at:
 http://localhost:3000/swagger/index.html
 ```
 
+## 🖥️ Frontend Interface
+
+The project includes a modern web-based frontend interface for interacting with the API. The frontend is served as static files from the same server.
+
+### Access the Frontend
+
+After starting the service, access the frontend at:
+
+```
+http://localhost:3000/
+```
+
+### Frontend Features
+
+The frontend provides a user-friendly interface for:
+
+- **📰 Get All News** - Browse news with filtering by tags and categories, pagination support
+- **📊 News Count** - View total count of news items with optional filters
+- **📄 News Details** - View full news article by ID with complete content
+- **📁 Categories** - Browse all available news categories
+- **🏷️ Tags** - View all available tags
+
+The interface features:
+- Modern, responsive design with gradient styling
+- Real-time API interaction
+- Formatted JSON responses with syntax highlighting
+- Error handling and loading states
+- Filtering and pagination controls
+
+### Frontend Structure
+
+- `frontend/index.html` - Main HTML structure
+- `frontend/app.js` - JavaScript logic for API calls and UI updates
+- `frontend/styles.css` - Modern CSS styling with gradients and animations
+
+The frontend is automatically served by the Gin router at the root path (`/`) and static files are available at `/static/`.
+
 ## 🔌 API Endpoints
 
 The service provides the following REST API endpoints:
 
+- `GET /` - Frontend web interface
+- `GET /static/*` - Static frontend files (CSS, JS)
 - `GET /api/v1/all_news` - Get all news with optional filtering by tagId and categoryId, with pagination
 - `GET /api/v1/count` - Get total count of news items
 - `GET /api/v1/news/:id` - Get news item by ID with full content
@@ -148,6 +196,8 @@ make test         # run tests
 - **Dependency Injection**: Google Wire for compile-time DI
 - **Database Support**: PostgreSQL with connection pooling
 - **API**: REST API with Gin framework
+- **Frontend Interface**: Modern web-based UI for API interaction
+- **Static File Serving**: Built-in static file server for frontend assets
 - **Graceful Shutdown**: Graceful shutdown with 5-second timeout for HTTP server
 - **Documentation**: Swagger/OpenAPI documentation
 - **Configuration**: Viper for configuration management
