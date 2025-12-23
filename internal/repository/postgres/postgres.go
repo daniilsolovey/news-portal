@@ -2,16 +2,19 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/daniilsolovey/news-portal/internal/domain"
-	"github.com/jackc/pgx/v5"
+	"github.com/go-pg/pg/v10"
 )
 
 const (
 	StatusPublished = 1
 )
+
+var ErrNewsNotFound = errors.New("news not found")
 
 // GetAllNews retrieves news with optional filtering by tagID and categoryID, with pagination
 // Results are sorted by publishedAt DESC and include full category and tags information
@@ -35,85 +38,42 @@ func (r *Repository) GetAllNews(ctx context.Context, tagID, categoryID *int,
 	}
 
 	offset := (page - 1) * pageSize
-	// may interfere with the use of indexes because:
-	// request plan one and condition always contains OR
-	query := `
-		SELECT
-			n."newsId",
-			n."categoryId",
-			n."title",
-			n."content",
-			n."author",
-			n."publishedAt",
-			n."updatedAt",
-			n."statusId",
-			n."tagIds",
-			c."categoryId" as category_categoryId,
-			c."title" as category_title,
-			c."orderNumber" as category_orderNumber,
-			c."statusId" as category_statusId
-		FROM "news" n
-		JOIN "categories" c ON n."categoryId" = c."categoryId"
-		WHERE
-			($1::int IS NULL OR n."categoryId" = $1::int)
-			AND ($2::int IS NULL OR $2::int = ANY(n."tagIds")) AND n."statusId" = $3 AND c."statusId" = $3 AND n."publishedAt" < NOW()
-		ORDER BY n."publishedAt" DESC
-		LIMIT $4 OFFSET $5
-	`
 
-	rows, err := r.pool.Query(ctx, query, categoryID, tagID, StatusPublished, pageSize, offset)
+	now := time.Now()
+
+	var newsEntities []News
+	query := r.db.ModelContext(ctx, &newsEntities).
+		Relation("Category").
+		Where(`"news"."statusId" = ?`, StatusPublished).
+		Where(`"category"."statusId" = ?`, StatusPublished).
+		Where(`"news"."publishedAt" < ?`, now)
+
+	if categoryID != nil {
+		query = query.Where(`"news"."categoryId" = ?`, *categoryID)
+	}
+
+	if tagID != nil {
+		query = query.Where(`? = ANY("news"."tagIds")`, *tagID)
+	}
+
+	err := query.
+		OrderExpr(`"news"."publishedAt" DESC`).
+		Limit(pageSize).
+		Offset(offset).
+		Select()
+
 	if err != nil {
 		r.log.Error("failed to query news", "error", err, "tagID", tagID, "categoryID", categoryID, "page", page, "pageSize", pageSize)
 		return nil, fmt.Errorf("failed to query news: %w", err)
 	}
 
-	defer rows.Close()
+	// Convert to domain models and load tags
+	newsList := make([]domain.News, 0, len(newsEntities))
 
-	var newsList []domain.News
-	for rows.Next() {
-		var news domain.News
-		var updatedAt sql.NullTime
-		var tagIds []int32
-
-		err := rows.Scan(
-			&news.NewsID,
-			&news.CategoryID,
-			&news.Title,
-			&news.Content,
-			&news.Author,
-			&news.PublishedAt,
-			&updatedAt,
-			&news.StatusID,
-			&tagIds,
-			&news.Category.CategoryID,
-			&news.Category.Title,
-			&news.Category.OrderNumber,
-			&news.Category.StatusID,
-		)
-		if err != nil {
-			r.log.Error("failed to scan news row", "error", err, "newsID", news.NewsID)
-			return nil, fmt.Errorf("failed to scan news row: %w", err)
-		}
-
-		// Get tags information by tagIds
-		// TODO: transaction tx
-		if len(tagIds) > 0 {
-			tags, err := r.getTagsByIDs(ctx, tagIds)
-			if err != nil {
-				r.log.Error("failed to get tags for news", "error", err, "newsID", news.NewsID, "tagIds", tagIds)
-				return nil, fmt.Errorf("failed to get tags: %w", err)
-			}
-			news.Tags = tags
-		} else {
-			news.Tags = []domain.Tag{}
-		}
-
-		newsList = append(newsList, news)
-	}
-
-	if err = rows.Err(); err != nil {
-		r.log.Error("error iterating news rows", "error", err)
-		return nil, fmt.Errorf("error iterating news rows: %w", err)
+	newsList, err = r.attachTagsBatch(ctx, newsEntities)
+	if err != nil {
+		r.log.Error("failed to attach tags to news", "error", err)
+		return nil, fmt.Errorf("failed to attach tags to news: %w", err)
 	}
 
 	r.log.Info("successfully retrieved news",
@@ -134,18 +94,17 @@ func (r *Repository) GetNewsCount(ctx context.Context, tagID, categoryID *int) (
 		"categoryID", categoryID,
 	)
 
-	// may interfere with the use of indexes because:
-	// request plan one and condition always contains OR
-	query := `
-		SELECT COUNT(*) as count
-		FROM "news" n
-		WHERE
-			($1::int IS NULL OR n."categoryId" = $1::int)
-			AND ($2::int IS NULL OR $2::int = ANY(n."tagIds"))
-	`
+	query := r.db.ModelContext(ctx, (*News)(nil))
 
-	var count int
-	err := r.pool.QueryRow(ctx, query, categoryID, tagID).Scan(&count)
+	if categoryID != nil {
+		query = query.Where(`"categoryId" = ?`, *categoryID)
+	}
+
+	if tagID != nil {
+		query = query.Where(`? = ANY("tagIds")`, *tagID)
+	}
+
+	count, err := query.Count()
 	if err != nil {
 		r.log.Error("failed to get news count", "error", err, "tagID", tagID, "categoryID", categoryID)
 		return 0, fmt.Errorf("failed to get news count: %w", err)
@@ -163,72 +122,35 @@ func (r *Repository) GetNewsCount(ctx context.Context, tagID, categoryID *int) (
 // GetNewsByID retrieves a single news item by ID with full content, category and tags
 func (r *Repository) GetNewsByID(ctx context.Context, newsID int) (*domain.News, error) {
 	r.log.Info("getting news by ID", "newsID", newsID)
+	now := time.Now()
+	newsEntity := &News{NewsID: newsID}
+	err := r.db.ModelContext(ctx, newsEntity).
+		Relation("Category").
+		Where(`"news"."statusId" = ?`, StatusPublished).
+		Where(`"category"."statusId" = ?`, StatusPublished).
+		Where(`"news"."publishedAt" < ?`, now).
+		WherePK().
+		Select()
 
-	query := `
-		SELECT
-			n."newsId",
-			n."categoryId",
-			n."title",
-			n."content",
-			n."author",
-			n."publishedAt",
-			n."updatedAt",
-			n."statusId",
-			n."tagIds",
-			c."categoryId" as category_categoryId,
-			c."title" as category_title,
-			c."orderNumber" as category_orderNumber,
-			c."statusId" as category_statusId
-		FROM "news" n
-		JOIN "categories" c ON n."categoryId" = c."categoryId"
-		WHERE n."newsId" = $1 AND n."statusId" = $2 AND c."statusId" = $2 AND n."publishedAt" < NOW()
-	`
-
-	var news domain.News
-	var updatedAt sql.NullTime
-	var tagIds []int32
-
-	err := r.pool.QueryRow(ctx, query, newsID, StatusPublished).Scan(
-		&news.NewsID,
-		&news.CategoryID,
-		&news.Title,
-		&news.Content,
-		&news.Author,
-		&news.PublishedAt,
-		&updatedAt,
-		&news.StatusID,
-		&tagIds,
-		&news.Category.CategoryID,
-		&news.Category.Title,
-		&news.Category.OrderNumber,
-		&news.Category.StatusID,
-	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == pg.ErrNoRows {
 			r.log.Warn("news not found", "newsID", newsID)
-			return nil, fmt.Errorf("news with id %d not found", newsID)
+			return nil, fmt.Errorf("get news by id %d: %w", newsID, ErrNewsNotFound)
+
 		}
 		r.log.Error("failed to get news by id", "error", err, "newsID", newsID)
 		return nil, fmt.Errorf("failed to get news by id: %w", err)
 	}
 
-	if updatedAt.Valid {
-		news.UpdatedAt = &updatedAt.Time
+	// Convert to domain model
+	news := newsEntity.toDomain()
+	loadTags, err := r.loadTags(ctx, newsEntity.TagIds)
+	if err != nil {
+		r.log.Error("failed to load tags", "error", err)
+		return nil, fmt.Errorf("failed to load tags: %w", err)
 	}
 
-	// Get tags information by tagIds
-	// TODO: transaction tx
-	if len(tagIds) > 0 {
-		tags, err := r.getTagsByIDs(ctx, tagIds)
-		if err != nil {
-			r.log.Error("failed to get tags for news", "error", err, "newsID", newsID, "tagIds", tagIds)
-			return nil, fmt.Errorf("failed to get tags: %w", err)
-		}
-		news.Tags = tags
-	} else {
-		news.Tags = []domain.Tag{}
-	}
-
+	news.Tags = loadTags
 	r.log.Info("successfully retrieved news by ID", "newsID", newsID, "title", news.Title)
 
 	return &news, nil
@@ -238,43 +160,21 @@ func (r *Repository) GetNewsByID(ctx context.Context, newsID int) (*domain.News,
 func (r *Repository) GetAllCategories(ctx context.Context) ([]domain.Category, error) {
 	r.log.Info("getting all categories")
 
-	query := `
-		SELECT
-			"categoryId",
-			"title",
-			"orderNumber",
-			"statusId"
-		FROM "categories"
-		WHERE "statusId" = $1
-		ORDER BY "orderNumber" ASC
-	`
+	var categoryEntities []Category
+	err := r.db.ModelContext(ctx, &categoryEntities).
+		Where(`"statusId" = ?`, StatusPublished).
+		OrderExpr(`"orderNumber" ASC`).
+		Select()
 
-	rows, err := r.pool.Query(ctx, query, StatusPublished)
 	if err != nil {
 		r.log.Error("failed to query categories", "error", err)
 		return nil, fmt.Errorf("failed to query categories: %w", err)
 	}
-	defer rows.Close()
 
-	var categories []domain.Category
-	for rows.Next() {
-		var category domain.Category
-		err := rows.Scan(
-			&category.CategoryID,
-			&category.Title,
-			&category.OrderNumber,
-			&category.StatusID,
-		)
-		if err != nil {
-			r.log.Error("failed to scan category row", "error", err)
-			return nil, fmt.Errorf("failed to scan category row: %w", err)
-		}
-		categories = append(categories, category)
-	}
-
-	if err = rows.Err(); err != nil {
-		r.log.Error("error iterating category rows", "error", err)
-		return nil, fmt.Errorf("error iterating category rows: %w", err)
+	// Convert to domain models
+	categories := make([]domain.Category, 0, len(categoryEntities))
+	for i := range categoryEntities {
+		categories = append(categories, categoryEntities[i].toDomain())
 	}
 
 	r.log.Info("successfully retrieved categories", "count", len(categories))
@@ -286,41 +186,21 @@ func (r *Repository) GetAllCategories(ctx context.Context) ([]domain.Category, e
 func (r *Repository) GetAllTags(ctx context.Context) ([]domain.Tag, error) {
 	r.log.Info("getting all tags")
 
-	query := `
-		SELECT
-			"tagId",
-			"title",
-			"statusId"
-		FROM "tags"
-		WHERE "statusId" = $1
-		ORDER BY "title" ASC
-	`
+	var tagEntities []Tag
+	err := r.db.ModelContext(ctx, &tagEntities).
+		Where(`"statusId" = ?`, StatusPublished).
+		OrderExpr(`"title" ASC`).
+		Select()
 
-	rows, err := r.pool.Query(ctx, query, StatusPublished)
 	if err != nil {
 		r.log.Error("failed to query tags", "error", err)
 		return nil, fmt.Errorf("failed to query tags: %w", err)
 	}
-	defer rows.Close()
 
-	var tags []domain.Tag
-	for rows.Next() {
-		var tag domain.Tag
-		err := rows.Scan(
-			&tag.TagID,
-			&tag.Title,
-			&tag.StatusID,
-		)
-		if err != nil {
-			r.log.Error("failed to scan tag row", "error", err)
-			return nil, fmt.Errorf("failed to scan tag row: %w", err)
-		}
-		tags = append(tags, tag)
-	}
-
-	if err = rows.Err(); err != nil {
-		r.log.Error("error iterating tag rows", "error", err)
-		return nil, fmt.Errorf("error iterating tag rows: %w", err)
+	// Convert to domain models
+	tags := make([]domain.Tag, 0, len(tagEntities))
+	for i := range tagEntities {
+		tags = append(tags, tagEntities[i].toDomain())
 	}
 
 	r.log.Info("successfully retrieved tags", "count", len(tags))
@@ -336,40 +216,101 @@ func (r *Repository) getTagsByIDs(ctx context.Context, tagIds []int32) ([]domain
 
 	r.log.Debug("getting tags by IDs", "tagIds", tagIds)
 
-	query := `
-		SELECT
-			"tagId",
-			"title",
-			"statusId"
-		FROM "tags"
-		WHERE "tagId" = ANY($1) AND "statusId" = $2
-		ORDER BY "title" ASC
-	`
+	var tagEntities []Tag
+	err := r.db.ModelContext(ctx, &tagEntities).
+		Where(`"tagId" IN (?)`, pg.In(tagIds)).
+		Where(`"statusId" = ?`, StatusPublished).
+		OrderExpr(`"title" ASC`).
+		Select()
 
-	rows, err := r.pool.Query(ctx, query, tagIds, StatusPublished)
 	if err != nil {
 		r.log.Error("failed to query tags by ids", "error", err, "tagIds", tagIds)
 		return nil, fmt.Errorf("failed to query tags by ids: %w", err)
 	}
-	defer rows.Close()
 
-	var tags []domain.Tag
-	for rows.Next() {
-		var tag domain.Tag
-		err := rows.Scan(&tag.TagID, &tag.Title, &tag.StatusID)
-		if err != nil {
-			r.log.Error("failed to scan tag row", "error", err)
-			return nil, fmt.Errorf("failed to scan tag row: %w", err)
-		}
-		tags = append(tags, tag)
-	}
-
-	if err = rows.Err(); err != nil {
-		r.log.Error("error iterating tag rows", "error", err)
-		return nil, fmt.Errorf("error iterating tag rows: %w", err)
+	// Convert to domain models
+	tags := make([]domain.Tag, 0, len(tagEntities))
+	for i := range tagEntities {
+		tags = append(tags, tagEntities[i].toDomain())
 	}
 
 	r.log.Debug("successfully retrieved tags by IDs", "count", len(tags), "tagIds", tagIds)
 
+	return tags, nil
+}
+
+// helpers-------------------------------------------------------------------------------------
+
+// attachTagsBatch loads all tags for the given news slice in one query and attaches them back
+// preserving the order from each News.TagIds.
+func (r *Repository) attachTagsBatch(ctx context.Context, newsEntities []News) ([]domain.News, error) {
+	newsList := make([]domain.News, 0, len(newsEntities))
+
+	// Collect tag IDs across the page (set) + keep per-news tagIds to preserve order.
+	tagSet := make(map[int32]struct{})
+	newsTagIDs := make([][]int32, len(newsEntities))
+
+	for i := range newsEntities {
+		ids := newsEntities[i].TagIds
+		newsTagIDs[i] = ids
+		for _, id := range ids {
+			tagSet[id] = struct{}{}
+		}
+	}
+
+	// Flatten set to slice for IN query.
+	allTagIDs := make([]int32, 0, len(tagSet))
+	for id := range tagSet {
+		allTagIDs = append(allTagIDs, id)
+	}
+
+	// Fetch all tags once and index by ID.
+	tagsByID := make(map[int32]domain.Tag)
+	if len(allTagIDs) > 0 {
+		tags, err := r.getTagsByIDs(ctx, allTagIDs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get tags: %w", err)
+		}
+
+		tagsByID = make(map[int32]domain.Tag, len(tags))
+		for _, t := range tags {
+			tagsByID[int32(t.TagID)] = t // adjust if TagID is already int32
+		}
+	}
+
+	// Convert to domain and attach tags back (preserving tagIds order).
+	for i := range newsEntities {
+		news := newsEntities[i].toDomain()
+
+		ids := newsTagIDs[i]
+		if len(ids) == 0 {
+			news.Tags = []domain.Tag{}
+			newsList = append(newsList, news)
+			continue
+		}
+
+		tags := make([]domain.Tag, 0, len(ids))
+		for _, id := range ids {
+			if t, ok := tagsByID[id]; ok {
+				tags = append(tags, t)
+			}
+		}
+		news.Tags = tags
+
+		newsList = append(newsList, news)
+	}
+
+	return newsList, nil
+}
+
+func (r *Repository) loadTags(ctx context.Context, tagIDs []int32) ([]domain.Tag, error) {
+	if len(tagIDs) == 0 {
+		return []domain.Tag{}, nil
+	}
+
+	tags, err := r.getTagsByIDs(ctx, tagIDs)
+	if err != nil {
+		return nil, fmt.Errorf("get tags: %w", err)
+	}
 	return tags, nil
 }

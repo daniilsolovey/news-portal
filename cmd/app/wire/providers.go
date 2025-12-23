@@ -11,38 +11,54 @@ import (
 	"github.com/daniilsolovey/news-portal/internal/repository"
 	"github.com/daniilsolovey/news-portal/internal/repository/postgres"
 	"github.com/daniilsolovey/news-portal/internal/usecase"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/go-pg/pg/v10"
 	"github.com/spf13/viper"
 )
 
 func ProvidePostgres(logger *slog.Logger) (*postgres.Repository, func(), error) {
-	ctx := context.Background()
 	url := viper.GetString("DATABASE_URL")
 
-	cfg, err := pgxpool.ParseConfig(url)
+	opt, err := pg.ParseURL(url)
 	if err != nil {
 		logger.Error("failed to parse database URL", "error", err)
 		return nil, nil, err
 	}
 
-	cfg.MaxConns = int32(viper.GetInt("DB_MAX_CONNS"))
+	opt.MaxRetries = 3
+	opt.PoolSize = viper.GetInt("DB_MAX_CONNS")
+
 	lifetimeStr := viper.GetString("DB_MAX_CONN_LIFETIME")
-	lifetime, err := time.ParseDuration(lifetimeStr)
-	if err != nil {
-		logger.Error("failed to parse DB_MAX_CONN_LIFETIME", "error", err, "value", lifetimeStr)
-		return nil, nil, err
-	}
-	cfg.MaxConnLifetime = lifetime
-
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
-	if err != nil {
-		logger.Error("failed to create postgres connection pool", "error", err)
-		return nil, nil, err
+	if lifetimeStr != "" {
+		lifetime, err := time.ParseDuration(lifetimeStr)
+		if err != nil {
+			logger.Error("failed to parse DB_MAX_CONN_LIFETIME", "error", err, "value", lifetimeStr)
+			return nil, nil, err
+		}
+		opt.MaxConnAge = lifetime
 	}
 
-	repo := postgres.New(pool, logger)
+	db := pg.Connect(opt)
+
+	// Add query hook for SQL logging if enabled
+	if viper.GetBool("DB_LOG_QUERIES") {
+		queryHook := postgres.NewQueryHook(logger)
+		db.AddQueryHook(queryHook)
+		logger.Info("SQL query logging enabled")
+	}
+
+	// Test connection
+	ctx := context.Background()
+	if err := db.Ping(ctx); err != nil {
+		logger.Error("failed to ping database", "error", err)
+		db.Close()
+		return nil, nil, err
+	}
+
+	repo := postgres.New(db, logger)
 	cleanup := func() {
-		repo.Close()
+		if err := repo.Close(); err != nil {
+			logger.Error("error closing database connection", "error", err)
+		}
 	}
 
 	return repo, cleanup, nil
