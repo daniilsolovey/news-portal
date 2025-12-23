@@ -9,6 +9,10 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+const (
+	StatusPublished = 1
+)
+
 // GetAllNews retrieves news with optional filtering by tagID and categoryID, with pagination
 // Results are sorted by publishedAt DESC and include full category and tags information
 // Content field is not included in the result (empty string)
@@ -34,7 +38,7 @@ func (r *Repository) GetAllNews(ctx context.Context, tagID, categoryID *int,
 	// may interfere with the use of indexes because:
 	// request plan one and condition always contains OR
 	query := `
-		SELECT 
+		SELECT
 			n."newsId",
 			n."categoryId",
 			n."title",
@@ -50,14 +54,14 @@ func (r *Repository) GetAllNews(ctx context.Context, tagID, categoryID *int,
 			c."statusId" as category_statusId
 		FROM "news" n
 		JOIN "categories" c ON n."categoryId" = c."categoryId"
-		WHERE 
+		WHERE
 			($1::int IS NULL OR n."categoryId" = $1::int)
-			AND ($2::int IS NULL OR $2::int = ANY(n."tagIds"))
+			AND ($2::int IS NULL OR $2::int = ANY(n."tagIds")) AND n."statusId" = $3 AND c."statusId" = $3 AND n."publishedAt" < NOW()
 		ORDER BY n."publishedAt" DESC
-		LIMIT $3 OFFSET $4
+		LIMIT $4 OFFSET $5
 	`
 
-	rows, err := r.pool.Query(ctx, query, categoryID, tagID, pageSize, offset)
+	rows, err := r.pool.Query(ctx, query, categoryID, tagID, StatusPublished, pageSize, offset)
 	if err != nil {
 		r.log.Error("failed to query news", "error", err, "tagID", tagID, "categoryID", categoryID, "page", page, "pageSize", pageSize)
 		return nil, fmt.Errorf("failed to query news: %w", err)
@@ -135,7 +139,7 @@ func (r *Repository) GetNewsCount(ctx context.Context, tagID, categoryID *int) (
 	query := `
 		SELECT COUNT(*) as count
 		FROM "news" n
-		WHERE 
+		WHERE
 			($1::int IS NULL OR n."categoryId" = $1::int)
 			AND ($2::int IS NULL OR $2::int = ANY(n."tagIds"))
 	`
@@ -161,7 +165,7 @@ func (r *Repository) GetNewsByID(ctx context.Context, newsID int) (*domain.News,
 	r.log.Info("getting news by ID", "newsID", newsID)
 
 	query := `
-		SELECT 
+		SELECT
 			n."newsId",
 			n."categoryId",
 			n."title",
@@ -177,14 +181,14 @@ func (r *Repository) GetNewsByID(ctx context.Context, newsID int) (*domain.News,
 			c."statusId" as category_statusId
 		FROM "news" n
 		JOIN "categories" c ON n."categoryId" = c."categoryId"
-		WHERE n."newsId" = $1
+		WHERE n."newsId" = $1 AND n."statusId" = $2 AND c."statusId" = $2 AND n."publishedAt" < NOW()
 	`
 
 	var news domain.News
 	var updatedAt sql.NullTime
 	var tagIds []int32
 
-	err := r.pool.QueryRow(ctx, query, newsID).Scan(
+	err := r.pool.QueryRow(ctx, query, newsID, StatusPublished).Scan(
 		&news.NewsID,
 		&news.CategoryID,
 		&news.Title,
@@ -235,16 +239,17 @@ func (r *Repository) GetAllCategories(ctx context.Context) ([]domain.Category, e
 	r.log.Info("getting all categories")
 
 	query := `
-		SELECT 
+		SELECT
 			"categoryId",
 			"title",
 			"orderNumber",
 			"statusId"
 		FROM "categories"
+		WHERE "statusId" = $1
 		ORDER BY "orderNumber" ASC
 	`
 
-	rows, err := r.pool.Query(ctx, query)
+	rows, err := r.pool.Query(ctx, query, StatusPublished)
 	if err != nil {
 		r.log.Error("failed to query categories", "error", err)
 		return nil, fmt.Errorf("failed to query categories: %w", err)
@@ -282,15 +287,16 @@ func (r *Repository) GetAllTags(ctx context.Context) ([]domain.Tag, error) {
 	r.log.Info("getting all tags")
 
 	query := `
-		SELECT 
+		SELECT
 			"tagId",
 			"title",
 			"statusId"
 		FROM "tags"
+		WHERE "statusId" = $1
 		ORDER BY "title" ASC
 	`
 
-	rows, err := r.pool.Query(ctx, query)
+	rows, err := r.pool.Query(ctx, query, StatusPublished)
 	if err != nil {
 		r.log.Error("failed to query tags", "error", err)
 		return nil, fmt.Errorf("failed to query tags: %w", err)
@@ -331,16 +337,16 @@ func (r *Repository) getTagsByIDs(ctx context.Context, tagIds []int32) ([]domain
 	r.log.Debug("getting tags by IDs", "tagIds", tagIds)
 
 	query := `
-		SELECT 
+		SELECT
 			"tagId",
 			"title",
 			"statusId"
 		FROM "tags"
-		WHERE "tagId" = ANY($1)
+		WHERE "tagId" = ANY($1) AND "statusId" = $2
 		ORDER BY "title" ASC
 	`
 
-	rows, err := r.pool.Query(ctx, query, tagIds)
+	rows, err := r.pool.Query(ctx, query, tagIds, StatusPublished)
 	if err != nil {
 		r.log.Error("failed to query tags by ids", "error", err, "tagIds", tagIds)
 		return nil, fmt.Errorf("failed to query tags by ids: %w", err)
