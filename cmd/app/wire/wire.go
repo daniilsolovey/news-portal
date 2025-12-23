@@ -5,16 +5,16 @@ package wire
 
 import (
 	"log/slog"
+	"net/http"
 
 	"github.com/daniilsolovey/news-portal/internal/repository/postgres"
-	"github.com/gin-gonic/gin"
 	"github.com/google/wire"
 )
 
 type Service struct {
 	Postgres *postgres.Repository
 	Logger   *slog.Logger
-	Engine   *gin.Engine
+	Engine   http.Handler
 }
 
 func Initialize() (*Service, func(), error) {

@@ -3,6 +3,7 @@ package wire
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 	"time"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/daniilsolovey/news-portal/internal/repository"
 	"github.com/daniilsolovey/news-portal/internal/repository/postgres"
 	"github.com/daniilsolovey/news-portal/internal/usecase"
-	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/viper"
 )
@@ -68,6 +68,6 @@ func ProvideHandler(uc *usecase.NewsUseCase, logger *slog.Logger) *delivery.News
 	return delivery.NewNewsHandler(uc, logger)
 }
 
-func ProvideEngine(handler *delivery.NewsHandler) *gin.Engine {
+func ProvideEngine(handler *delivery.NewsHandler) http.Handler {
 	return handler.RegisterRoutes()
 }

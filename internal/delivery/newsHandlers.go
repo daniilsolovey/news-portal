@@ -1,12 +1,19 @@
 package delivery
 
 import (
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/daniilsolovey/news-portal/internal/usecase"
-	"github.com/gin-gonic/gin"
+)
+
+const (
+	defaultPage     = 1
+	defaultPageSize = 10
+	maxPageSize     = 100
 )
 
 // NewsHandler handles HTTP requests
@@ -35,62 +42,47 @@ func NewNewsHandler(uc usecase.INewsUseCase, log *slog.Logger) *NewsHandler {
 // @Success 200 {array} domain.NewsSummary
 // @Failure 400,500 {object} map[string]string
 // @Router /api/v1/all_news [get]
-func (h *NewsHandler) GetAllNews(c *gin.Context) {
-	var tagID, categoryID *int
-	var page, pageSize int = 1, 10
+func (h *NewsHandler) GetAllNews(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
 
-	// Parse optional tagId
-	if tagIDStr := c.Query("tagId"); tagIDStr != "" {
-		if id, err := strconv.Atoi(tagIDStr); err == nil {
-			tagID = &id
-		} else {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tagId"})
-			return
-		}
-	}
-
-	// Parse optional categoryId
-	if categoryIDStr := c.Query("categoryId"); categoryIDStr != "" {
-		if id, err := strconv.Atoi(categoryIDStr); err == nil {
-			categoryID = &id
-		} else {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid categoryId"})
-			return
-		}
-	}
-
-	// Parse optional page
-	if pageStr := c.Query("page"); pageStr != "" {
-		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-			page = p
-		} else {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page"})
-			return
-		}
-	}
-
-	// Parse optional pageSize
-	if pageSizeStr := c.Query("pageSize"); pageSizeStr != "" {
-		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 {
-			if ps > 100 {
-				ps = 100
-			}
-
-			pageSize = ps
-		} else {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid pageSize"})
-			return
-		}
-	}
-
-	summaries, err := h.uc.GetAllNews(c.Request.Context(), tagID, categoryID, page, pageSize)
+	tagID, err := parseOptionalInt(q.Get("tagId"))
 	if err != nil {
-		h.log.Error("failed to get all news", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		writeJSONError(w, http.StatusBadRequest, "invalid tagId")
 		return
 	}
 
-	c.JSON(http.StatusOK, summaries)
+	categoryID, err := parseOptionalInt(q.Get("categoryId"))
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid categoryId")
+		return
+	}
+
+	page, err := parsePositiveIntOrDefault(q.Get("page"), defaultPage)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid page")
+		return
+	}
+
+	pageSize, err := parsePositiveIntOrDefault(q.Get("pageSize"), defaultPageSize)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid pageSize")
+		return
+	}
+
+	if pageSize > maxPageSize {
+		pageSize = maxPageSize
+	}
+
+	summaries, err := h.uc.GetAllNews(r.Context(), tagID, categoryID, page, pageSize)
+	if err != nil {
+		h.log.Error("failed to get all news", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	if err := writeJSON(w, http.StatusOK, summaries); err != nil {
+		h.log.Warn("failed to write json response", "error", err)
+	}
 }
 
 // GetNewsCount handles GET /api/v1/count
@@ -103,37 +95,31 @@ func (h *NewsHandler) GetAllNews(c *gin.Context) {
 // @Success 200 {integer} int
 // @Failure 400,500 {object} map[string]string
 // @Router /api/v1/count [get]
-func (h *NewsHandler) GetNewsCount(c *gin.Context) {
-	var tagID, categoryID *int
+func (h *NewsHandler) GetNewsCount(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
 
-	// Parse optional tagId
-	if tagIDStr := c.Query("tagId"); tagIDStr != "" {
-		if id, err := strconv.Atoi(tagIDStr); err == nil {
-			tagID = &id
-		} else {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tagId"})
-			return
-		}
-	}
-
-	// Parse optional categoryId
-	if categoryIDStr := c.Query("categoryId"); categoryIDStr != "" {
-		if id, err := strconv.Atoi(categoryIDStr); err == nil {
-			categoryID = &id
-		} else {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid categoryId"})
-			return
-		}
-	}
-
-	count, err := h.uc.GetNewsCount(c.Request.Context(), tagID, categoryID)
+	tagID, err := parseOptionalInt(q.Get("tagId"))
 	if err != nil {
-		h.log.Error("failed to get news count", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		writeJSONError(w, http.StatusBadRequest, "invalid tagId")
 		return
 	}
 
-	c.JSON(http.StatusOK, count)
+	categoryID, err := parseOptionalInt(q.Get("categoryId"))
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid categoryId")
+		return
+	}
+
+	count, err := h.uc.GetNewsCount(r.Context(), tagID, categoryID)
+	if err != nil {
+		h.log.Error("failed to get news count", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	if err := writeJSON(w, http.StatusOK, count); err != nil {
+		h.log.Warn("failed to write json response", "error", err)
+	}
 }
 
 // GetNewsByID handles GET /api/v1/news/:id
@@ -145,27 +131,31 @@ func (h *NewsHandler) GetNewsCount(c *gin.Context) {
 // @Success 200 {object} domain.News
 // @Failure 400,404,500 {object} map[string]string
 // @Router /api/v1/news/{id} [get]
-func (h *NewsHandler) GetNewsByID(c *gin.Context) {
-	idStr := c.Param("id")
+func (h *NewsHandler) GetNewsByID(w http.ResponseWriter, r *http.Request) {
+	// Extract ID from path /api/v1/news/{id}
+	idStr := r.PathValue("id")
+	if idStr == "" {
+		writeJSONError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		writeJSONError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 
-	news, err := h.uc.GetNewsByID(c.Request.Context(), id)
+	news, err := h.uc.GetNewsByID(r.Context(), id)
 	if err != nil {
 		h.log.Error("failed to get news by ID", "error", err, "id", id)
-		// Check if it's a "not found" error
-		if err.Error() == "news with id "+idStr+" not found" {
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// TODO:Check if not found record error
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
-	c.JSON(http.StatusOK, news)
+	if err := writeJSON(w, http.StatusOK, news); err != nil {
+		h.log.Warn("failed to write json response", "error", err)
+	}
 }
 
 // GetAllCategories handles GET /api/v1/categories
@@ -176,15 +166,17 @@ func (h *NewsHandler) GetNewsByID(c *gin.Context) {
 // @Success 200 {array} domain.Category
 // @Failure 500 {object} map[string]string
 // @Router /api/v1/categories [get]
-func (h *NewsHandler) GetAllCategories(c *gin.Context) {
-	categories, err := h.uc.GetAllCategories(c.Request.Context())
+func (h *NewsHandler) GetAllCategories(w http.ResponseWriter, r *http.Request) {
+	categories, err := h.uc.GetAllCategories(r.Context())
 	if err != nil {
 		h.log.Error("failed to get all categories", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
-	c.JSON(http.StatusOK, categories)
+	if err := writeJSON(w, http.StatusOK, categories); err != nil {
+		h.log.Warn("failed to write json response", "error", err)
+	}
 }
 
 // GetAllTags handles GET /api/v1/tags
@@ -195,13 +187,59 @@ func (h *NewsHandler) GetAllCategories(c *gin.Context) {
 // @Success 200 {array} domain.Tag
 // @Failure 500 {object} map[string]string
 // @Router /api/v1/tags [get]
-func (h *NewsHandler) GetAllTags(c *gin.Context) {
-	tags, err := h.uc.GetAllTags(c.Request.Context())
+func (h *NewsHandler) GetAllTags(w http.ResponseWriter, r *http.Request) {
+	tags, err := h.uc.GetAllTags(r.Context())
 	if err != nil {
 		h.log.Error("failed to get all tags", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
-	c.JSON(http.StatusOK, tags)
+	if err := writeJSON(w, http.StatusOK, tags); err != nil {
+		h.log.Warn("failed to write json response", "error", err)
+	}
+}
+
+// helpers: ------------------------------------------------------------------
+
+func parseOptionalInt(s string) (*int, error) {
+	if s == "" {
+		return nil, nil
+	}
+
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		return nil, err
+	}
+
+	return &v, nil
+}
+
+func parsePositiveIntOrDefault(s string, def int) (int, error) {
+	if s == "" {
+		return def, nil
+	}
+	v, err := strconv.Atoi(s)
+	if err != nil || v <= 0 {
+		return 0, fmt.Errorf("must be positive int")
+	}
+	return v, nil
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) error {
+	data, err := json.Marshal(v)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return err
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+
+	_, err = w.Write(data)
+	return err
+}
+
+func writeJSONError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
 }

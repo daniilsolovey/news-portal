@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/daniilsolovey/news-portal/internal/domain"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -60,18 +59,8 @@ func (m *mockNewsUseCase) GetAllTags(ctx context.Context) ([]domain.Tag, error) 
 	return nil, nil
 }
 
-func setupTestRouter(handler *NewsHandler) *gin.Engine {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	api := r.Group("/api/v1")
-	{
-		api.GET("/all_news", handler.GetAllNews)
-		api.GET("/count", handler.GetNewsCount)
-		api.GET("/news/:id", handler.GetNewsByID)
-		api.GET("/categories", handler.GetAllCategories)
-		api.GET("/tags", handler.GetAllTags)
-	}
-	return r
+func setupTestRouter(handler *NewsHandler) http.Handler {
+	return handler.RegisterRoutes()
 }
 
 func TestNewsHandler_GetAllNews(t *testing.T) {
@@ -156,28 +145,28 @@ func TestNewsHandler_GetAllNews(t *testing.T) {
 			queryParams:    "?tagId=abc",
 			mockFunc:       nil,
 			expectedStatus: http.StatusBadRequest,
-			expectedBody:   gin.H{"error": "invalid tagId"},
+			expectedBody:   map[string]interface{}{"error": "invalid tagId"},
 		},
 		{
 			name:           "invalid categoryId",
 			queryParams:    "?categoryId=xyz",
 			mockFunc:       nil,
 			expectedStatus: http.StatusBadRequest,
-			expectedBody:   gin.H{"error": "invalid categoryId"},
+			expectedBody:   map[string]interface{}{"error": "invalid categoryId"},
 		},
 		{
 			name:           "invalid page",
 			queryParams:    "?page=0",
 			mockFunc:       nil,
 			expectedStatus: http.StatusBadRequest,
-			expectedBody:   gin.H{"error": "invalid page"},
+			expectedBody:   map[string]interface{}{"error": "invalid page"},
 		},
 		{
 			name:           "invalid pageSize",
 			queryParams:    "?pageSize=-1",
 			mockFunc:       nil,
 			expectedStatus: http.StatusBadRequest,
-			expectedBody:   gin.H{"error": "invalid pageSize"},
+			expectedBody:   map[string]interface{}{"error": "invalid pageSize"},
 		},
 		{
 			name:        "pageSize capped at 100",
@@ -195,7 +184,7 @@ func TestNewsHandler_GetAllNews(t *testing.T) {
 				return nil, errors.New("database error")
 			},
 			expectedStatus: http.StatusInternalServerError,
-			expectedBody:   gin.H{"error": "database error"},
+			expectedBody:   map[string]interface{}{"error": "database error"},
 		},
 	}
 
@@ -290,14 +279,14 @@ func TestNewsHandler_GetNewsCount(t *testing.T) {
 			queryParams:    "?tagId=abc",
 			mockFunc:       nil,
 			expectedStatus: http.StatusBadRequest,
-			expectedBody:   gin.H{"error": "invalid tagId"},
+			expectedBody:   map[string]interface{}{"error": "invalid tagId"},
 		},
 		{
 			name:           "invalid categoryId",
 			queryParams:    "?categoryId=xyz",
 			mockFunc:       nil,
 			expectedStatus: http.StatusBadRequest,
-			expectedBody:   gin.H{"error": "invalid categoryId"},
+			expectedBody:   map[string]interface{}{"error": "invalid categoryId"},
 		},
 		{
 			name:        "usecase error",
@@ -306,7 +295,7 @@ func TestNewsHandler_GetNewsCount(t *testing.T) {
 				return 0, errors.New("database error")
 			},
 			expectedStatus: http.StatusInternalServerError,
-			expectedBody:   gin.H{"error": "database error"},
+			expectedBody:   map[string]interface{}{"error": "database error"},
 		},
 	}
 
@@ -379,7 +368,7 @@ func TestNewsHandler_GetNewsByID(t *testing.T) {
 			pathID:         "abc",
 			mockFunc:       nil,
 			expectedStatus: http.StatusBadRequest,
-			expectedBody:   gin.H{"error": "invalid id"},
+			expectedBody:   map[string]interface{}{"error": "invalid id"},
 		},
 		{
 			name:   "not found",
@@ -388,7 +377,7 @@ func TestNewsHandler_GetNewsByID(t *testing.T) {
 				return nil, errors.New("news with id 999 not found")
 			},
 			expectedStatus: http.StatusNotFound,
-			expectedBody:   gin.H{"error": "news with id 999 not found"},
+			expectedBody:   map[string]interface{}{"error": "news with id 999 not found"},
 		},
 		{
 			name:   "usecase error",
@@ -397,7 +386,7 @@ func TestNewsHandler_GetNewsByID(t *testing.T) {
 				return nil, errors.New("database error")
 			},
 			expectedStatus: http.StatusInternalServerError,
-			expectedBody:   gin.H{"error": "database error"},
+			expectedBody:   map[string]interface{}{"error": "database error"},
 		},
 	}
 
@@ -472,7 +461,7 @@ func TestNewsHandler_GetAllCategories(t *testing.T) {
 				return nil, errors.New("database error")
 			},
 			expectedStatus: http.StatusInternalServerError,
-			expectedBody:   gin.H{"error": "database error"},
+			expectedBody:   map[string]interface{}{"error": "database error"},
 		},
 	}
 
@@ -549,7 +538,7 @@ func TestNewsHandler_GetAllTags(t *testing.T) {
 				return nil, errors.New("database error")
 			},
 			expectedStatus: http.StatusInternalServerError,
-			expectedBody:   gin.H{"error": "database error"},
+			expectedBody:   map[string]interface{}{"error": "database error"},
 		},
 	}
 
