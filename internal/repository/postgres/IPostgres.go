@@ -4,18 +4,17 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/daniilsolovey/news-portal/internal/domain"
 	"github.com/go-pg/pg/v10"
 )
 
 type IRepository interface {
 	Close() error
 	Ping(ctx context.Context) error
-	GetAllNews(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.News, error)
+	GetAllNews(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]News, error)
 	GetNewsCount(ctx context.Context, tagID, categoryID *int) (int, error)
-	GetNewsByID(ctx context.Context, newsID int) (*domain.News, error)
-	GetAllCategories(ctx context.Context) ([]domain.Category, error)
-	GetAllTags(ctx context.Context) ([]domain.Tag, error)
+	GetNewsByID(ctx context.Context, newsID int) (*News, error)
+	GetAllCategories(ctx context.Context) ([]Category, error)
+	GetAllTags(ctx context.Context) ([]Tag, error)
 }
 
 type Repository struct {

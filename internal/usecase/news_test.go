@@ -23,19 +23,21 @@ func noOpLogger() *slog.Logger {
 
 // mockPostgresRepository is a manual stub implementation of postgres.IRepository
 type mockPostgresRepository struct {
-	getAllNewsFunc       func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.News, error)
+	getAllNewsFunc       func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error)
 	getNewsCountFunc     func(ctx context.Context, tagID, categoryID *int) (int, error)
-	getNewsByIDFunc      func(ctx context.Context, newsID int) (*domain.News, error)
-	getAllCategoriesFunc func(ctx context.Context) ([]domain.Category, error)
-	getAllTagsFunc       func(ctx context.Context) ([]domain.Tag, error)
+	getNewsByIDFunc      func(ctx context.Context, newsID int) (*postgres.News, error)
+	getAllCategoriesFunc func(ctx context.Context) ([]postgres.Category, error)
+	getAllTagsFunc       func(ctx context.Context) ([]postgres.Tag, error)
 }
 
-func (m *mockPostgresRepository) Close() {}
+func (m *mockPostgresRepository) Close() error {
+	return nil
+}
 func (m *mockPostgresRepository) Ping(ctx context.Context) error {
 	return nil
 }
 
-func (m *mockPostgresRepository) GetAllNews(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.News, error) {
+func (m *mockPostgresRepository) GetAllNews(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error) {
 	if m.getAllNewsFunc != nil {
 		return m.getAllNewsFunc(ctx, tagID, categoryID, page, pageSize)
 	}
@@ -49,21 +51,21 @@ func (m *mockPostgresRepository) GetNewsCount(ctx context.Context, tagID, catego
 	return 0, nil
 }
 
-func (m *mockPostgresRepository) GetNewsByID(ctx context.Context, newsID int) (*domain.News, error) {
+func (m *mockPostgresRepository) GetNewsByID(ctx context.Context, newsID int) (*postgres.News, error) {
 	if m.getNewsByIDFunc != nil {
 		return m.getNewsByIDFunc(ctx, newsID)
 	}
 	return nil, nil
 }
 
-func (m *mockPostgresRepository) GetAllCategories(ctx context.Context) ([]domain.Category, error) {
+func (m *mockPostgresRepository) GetAllCategories(ctx context.Context) ([]postgres.Category, error) {
 	if m.getAllCategoriesFunc != nil {
 		return m.getAllCategoriesFunc(ctx)
 	}
 	return nil, nil
 }
 
-func (m *mockPostgresRepository) GetAllTags(ctx context.Context) ([]domain.Tag, error) {
+func (m *mockPostgresRepository) GetAllTags(ctx context.Context) ([]postgres.Tag, error) {
 	if m.getAllTagsFunc != nil {
 		return m.getAllTagsFunc(ctx)
 	}
@@ -91,7 +93,7 @@ func TestNewsUseCase_GetAllNews(t *testing.T) {
 		categoryID     *int
 		page           int
 		pageSize       int
-		mockFunc       func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.News, error)
+		mockFunc       func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error)
 		expectedResult []domain.NewsSummary
 		expectedError  error
 	}{
@@ -101,12 +103,12 @@ func TestNewsUseCase_GetAllNews(t *testing.T) {
 			categoryID: nil,
 			page:       1,
 			pageSize:   10,
-			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.News, error) {
+			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error) {
 				assert.Nil(t, tagID)
 				assert.Nil(t, categoryID)
 				assert.Equal(t, 1, page)
 				assert.Equal(t, 10, pageSize)
-				return []domain.News{
+				return []postgres.News{
 					{
 						NewsID:      1,
 						CategoryID:  1,
@@ -116,13 +118,13 @@ func TestNewsUseCase_GetAllNews(t *testing.T) {
 						PublishedAt: testTime,
 						UpdatedAt:   &updatedTime,
 						StatusID:    1,
-						Category: domain.Category{
+						Category: &postgres.Category{
 							CategoryID:  1,
 							Title:       "Category 1",
 							OrderNumber: 1,
 							StatusID:    1,
 						},
-						Tags: []domain.Tag{
+						Tags: []postgres.Tag{
 							{TagID: 1, Title: "Tag 1", StatusID: 1},
 						},
 					},
@@ -135,13 +137,13 @@ func TestNewsUseCase_GetAllNews(t *testing.T) {
 						PublishedAt: testTime,
 						UpdatedAt:   nil,
 						StatusID:    1,
-						Category: domain.Category{
+						Category: &postgres.Category{
 							CategoryID:  2,
 							Title:       "Category 2",
 							OrderNumber: 2,
 							StatusID:    1,
 						},
-						Tags: []domain.Tag{},
+						Tags: []postgres.Tag{},
 					},
 				}, nil
 			},
@@ -189,13 +191,13 @@ func TestNewsUseCase_GetAllNews(t *testing.T) {
 			categoryID: nil,
 			page:       2,
 			pageSize:   20,
-			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.News, error) {
+			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error) {
 				require.NotNil(t, tagID)
 				assert.Equal(t, 5, *tagID)
 				assert.Nil(t, categoryID)
 				assert.Equal(t, 2, page)
 				assert.Equal(t, 20, pageSize)
-				return []domain.News{}, nil
+				return []postgres.News{}, nil
 			},
 			expectedResult: []domain.NewsSummary{},
 			expectedError:  nil,
@@ -206,11 +208,11 @@ func TestNewsUseCase_GetAllNews(t *testing.T) {
 			categoryID: intPtr(3),
 			page:       1,
 			pageSize:   10,
-			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.News, error) {
+			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error) {
 				assert.Nil(t, tagID)
 				require.NotNil(t, categoryID)
 				assert.Equal(t, 3, *categoryID)
-				return []domain.News{}, nil
+				return []postgres.News{}, nil
 			},
 			expectedResult: []domain.NewsSummary{},
 			expectedError:  nil,
@@ -221,14 +223,14 @@ func TestNewsUseCase_GetAllNews(t *testing.T) {
 			categoryID: intPtr(2),
 			page:       3,
 			pageSize:   15,
-			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.News, error) {
+			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error) {
 				require.NotNil(t, tagID)
 				require.NotNil(t, categoryID)
 				assert.Equal(t, 1, *tagID)
 				assert.Equal(t, 2, *categoryID)
 				assert.Equal(t, 3, page)
 				assert.Equal(t, 15, pageSize)
-				return []domain.News{}, nil
+				return []postgres.News{}, nil
 			},
 			expectedResult: []domain.NewsSummary{},
 			expectedError:  nil,
@@ -239,7 +241,7 @@ func TestNewsUseCase_GetAllNews(t *testing.T) {
 			categoryID: nil,
 			page:       1,
 			pageSize:   10,
-			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.News, error) {
+			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error) {
 				return nil, errors.New("database error")
 			},
 			expectedResult: nil,
@@ -251,8 +253,8 @@ func TestNewsUseCase_GetAllNews(t *testing.T) {
 			categoryID: nil,
 			page:       1,
 			pageSize:   10,
-			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.News, error) {
-				return []domain.News{}, nil
+			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error) {
+				return []postgres.News{}, nil
 			},
 			expectedResult: []domain.NewsSummary{},
 			expectedError:  nil,
@@ -263,8 +265,8 @@ func TestNewsUseCase_GetAllNews(t *testing.T) {
 			categoryID: nil,
 			page:       1,
 			pageSize:   10,
-			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.News, error) {
-				return []domain.News{
+			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error) {
+				return []postgres.News{
 					{
 						NewsID:      1,
 						CategoryID:  1,
@@ -273,8 +275,8 @@ func TestNewsUseCase_GetAllNews(t *testing.T) {
 						Author:      "Author",
 						PublishedAt: testTime,
 						StatusID:    1,
-						Category:    domain.Category{CategoryID: 1, Title: "Cat", OrderNumber: 1, StatusID: 1},
-						Tags:        []domain.Tag{},
+						Category:    &postgres.Category{CategoryID: 1, Title: "Cat", OrderNumber: 1, StatusID: 1},
+						Tags:        []postgres.Tag{},
 					},
 				}, nil
 			},
@@ -438,16 +440,16 @@ func TestNewsUseCase_GetNewsByID(t *testing.T) {
 	tests := []struct {
 		name           string
 		newsID         int
-		mockFunc       func(ctx context.Context, newsID int) (*domain.News, error)
+		mockFunc       func(ctx context.Context, newsID int) (*postgres.News, error)
 		expectedResult *domain.News
 		expectedError  error
 	}{
 		{
 			name:   "success",
 			newsID: 1,
-			mockFunc: func(ctx context.Context, newsID int) (*domain.News, error) {
+			mockFunc: func(ctx context.Context, newsID int) (*postgres.News, error) {
 				assert.Equal(t, 1, newsID)
-				return &domain.News{
+				return &postgres.News{
 					NewsID:      1,
 					CategoryID:  1,
 					Title:       "Test News",
@@ -455,13 +457,13 @@ func TestNewsUseCase_GetNewsByID(t *testing.T) {
 					Author:      "Author",
 					PublishedAt: testTime,
 					StatusID:    1,
-					Category: domain.Category{
+					Category: &postgres.Category{
 						CategoryID:  1,
 						Title:       "Category",
 						OrderNumber: 1,
 						StatusID:    1,
 					},
-					Tags: []domain.Tag{
+					Tags: []postgres.Tag{
 						{TagID: 1, Title: "Tag 1", StatusID: 1},
 					},
 				}, nil
@@ -489,7 +491,7 @@ func TestNewsUseCase_GetNewsByID(t *testing.T) {
 		{
 			name:   "not found",
 			newsID: 999,
-			mockFunc: func(ctx context.Context, newsID int) (*domain.News, error) {
+			mockFunc: func(ctx context.Context, newsID int) (*postgres.News, error) {
 				return nil, errors.New("news with id 999 not found")
 			},
 			expectedResult: nil,
@@ -498,7 +500,7 @@ func TestNewsUseCase_GetNewsByID(t *testing.T) {
 		{
 			name:   "repository error",
 			newsID: 1,
-			mockFunc: func(ctx context.Context, newsID int) (*domain.News, error) {
+			mockFunc: func(ctx context.Context, newsID int) (*postgres.News, error) {
 				return nil, errors.New("database error")
 			},
 			expectedResult: nil,
@@ -536,14 +538,14 @@ func TestNewsUseCase_GetAllCategories(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		mockFunc       func(ctx context.Context) ([]domain.Category, error)
+		mockFunc       func(ctx context.Context) ([]postgres.Category, error)
 		expectedResult []domain.Category
 		expectedError  error
 	}{
 		{
 			name: "success",
-			mockFunc: func(ctx context.Context) ([]domain.Category, error) {
-				return []domain.Category{
+			mockFunc: func(ctx context.Context) ([]postgres.Category, error) {
+				return []postgres.Category{
 					{
 						CategoryID:  1,
 						Title:       "Category 1",
@@ -576,15 +578,15 @@ func TestNewsUseCase_GetAllCategories(t *testing.T) {
 		},
 		{
 			name: "empty list",
-			mockFunc: func(ctx context.Context) ([]domain.Category, error) {
-				return []domain.Category{}, nil
+			mockFunc: func(ctx context.Context) ([]postgres.Category, error) {
+				return []postgres.Category{}, nil
 			},
 			expectedResult: []domain.Category{},
 			expectedError:  nil,
 		},
 		{
 			name: "repository error",
-			mockFunc: func(ctx context.Context) ([]domain.Category, error) {
+			mockFunc: func(ctx context.Context) ([]postgres.Category, error) {
 				return nil, errors.New("database error")
 			},
 			expectedResult: nil,
@@ -622,14 +624,14 @@ func TestNewsUseCase_GetAllTags(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		mockFunc       func(ctx context.Context) ([]domain.Tag, error)
+		mockFunc       func(ctx context.Context) ([]postgres.Tag, error)
 		expectedResult []domain.Tag
 		expectedError  error
 	}{
 		{
 			name: "success",
-			mockFunc: func(ctx context.Context) ([]domain.Tag, error) {
-				return []domain.Tag{
+			mockFunc: func(ctx context.Context) ([]postgres.Tag, error) {
+				return []postgres.Tag{
 					{
 						TagID:    1,
 						Title:    "Tag 1",
@@ -658,15 +660,15 @@ func TestNewsUseCase_GetAllTags(t *testing.T) {
 		},
 		{
 			name: "empty list",
-			mockFunc: func(ctx context.Context) ([]domain.Tag, error) {
-				return []domain.Tag{}, nil
+			mockFunc: func(ctx context.Context) ([]postgres.Tag, error) {
+				return []postgres.Tag{}, nil
 			},
 			expectedResult: []domain.Tag{},
 			expectedError:  nil,
 		},
 		{
 			name: "repository error",
-			mockFunc: func(ctx context.Context) ([]domain.Tag, error) {
+			mockFunc: func(ctx context.Context) ([]postgres.Tag, error) {
 				return nil, errors.New("database error")
 			},
 			expectedResult: nil,

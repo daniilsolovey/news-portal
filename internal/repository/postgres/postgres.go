@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/daniilsolovey/news-portal/internal/domain"
 	"github.com/go-pg/pg/v10"
 )
 
@@ -20,7 +19,7 @@ var ErrNewsNotFound = errors.New("news not found")
 // Results are sorted by publishedAt DESC and include full category and tags information
 // Content field is not included in the result (empty string)
 func (r *Repository) GetAllNews(ctx context.Context, tagID, categoryID *int,
-	page, pageSize int) ([]domain.News, error) {
+	page, pageSize int) ([]News, error) {
 
 	r.log.Info("getting all news",
 		"tagID", tagID,
@@ -41,8 +40,8 @@ func (r *Repository) GetAllNews(ctx context.Context, tagID, categoryID *int,
 
 	now := time.Now()
 
-	var newsEntities []News
-	query := r.db.ModelContext(ctx, &newsEntities).
+	var news []News
+	query := r.db.ModelContext(ctx, &news).
 		Relation("Category").
 		Where(`"news"."statusId" = ?`, StatusPublished).
 		Where(`"category"."statusId" = ?`, StatusPublished).
@@ -63,14 +62,13 @@ func (r *Repository) GetAllNews(ctx context.Context, tagID, categoryID *int,
 		Select()
 
 	if err != nil {
-		r.log.Error("failed to query news", "error", err, "tagID", tagID, "categoryID", categoryID, "page", page, "pageSize", pageSize)
+		r.log.Error("failed to query news", "error", err, "tagID",
+			tagID, "categoryID", categoryID, "page", page, "pageSize", pageSize,
+		)
 		return nil, fmt.Errorf("failed to query news: %w", err)
 	}
 
-	// Convert to domain models and load tags
-	newsList := make([]domain.News, 0, len(newsEntities))
-
-	newsList, err = r.attachTagsBatch(ctx, newsEntities)
+	newsList, err := r.attachTagsBatch(ctx, news)
 	if err != nil {
 		r.log.Error("failed to attach tags to news", "error", err)
 		return nil, fmt.Errorf("failed to attach tags to news: %w", err)
@@ -106,7 +104,9 @@ func (r *Repository) GetNewsCount(ctx context.Context, tagID, categoryID *int) (
 
 	count, err := query.Count()
 	if err != nil {
-		r.log.Error("failed to get news count", "error", err, "tagID", tagID, "categoryID", categoryID)
+		r.log.Error("failed to get news count", "error", err, "tagID",
+			tagID, "categoryID", categoryID,
+		)
 		return 0, fmt.Errorf("failed to get news count: %w", err)
 	}
 
@@ -120,7 +120,7 @@ func (r *Repository) GetNewsCount(ctx context.Context, tagID, categoryID *int) (
 }
 
 // GetNewsByID retrieves a single news item by ID with full content, category and tags
-func (r *Repository) GetNewsByID(ctx context.Context, newsID int) (*domain.News, error) {
+func (r *Repository) GetNewsByID(ctx context.Context, newsID int) (*News, error) {
 	r.log.Info("getting news by ID", "newsID", newsID)
 	now := time.Now()
 	newsEntity := &News{NewsID: newsID}
@@ -142,26 +142,28 @@ func (r *Repository) GetNewsByID(ctx context.Context, newsID int) (*domain.News,
 		return nil, fmt.Errorf("failed to get news by id: %w", err)
 	}
 
-	// Convert to domain model
-	news := newsEntity.toDomain()
+	// Load tags
 	loadTags, err := r.loadTags(ctx, newsEntity.TagIds)
 	if err != nil {
 		r.log.Error("failed to load tags", "error", err)
 		return nil, fmt.Errorf("failed to load tags: %w", err)
 	}
 
-	news.Tags = loadTags
-	r.log.Info("successfully retrieved news by ID", "newsID", newsID, "title", news.Title)
+	// Attach tags to news entity
+	newsEntity.Tags = loadTags
+	r.log.Info("successfully retrieved news by ID", "newsID", newsID,
+		"title", newsEntity.Title,
+	)
 
-	return &news, nil
+	return newsEntity, nil
 }
 
 // GetAllCategories retrieves all categories ordered by orderNumber
-func (r *Repository) GetAllCategories(ctx context.Context) ([]domain.Category, error) {
+func (r *Repository) GetAllCategories(ctx context.Context) ([]Category, error) {
 	r.log.Info("getting all categories")
 
-	var categoryEntities []Category
-	err := r.db.ModelContext(ctx, &categoryEntities).
+	var category []Category
+	err := r.db.ModelContext(ctx, &category).
 		Where(`"statusId" = ?`, StatusPublished).
 		OrderExpr(`"orderNumber" ASC`).
 		Select()
@@ -171,23 +173,17 @@ func (r *Repository) GetAllCategories(ctx context.Context) ([]domain.Category, e
 		return nil, fmt.Errorf("failed to query categories: %w", err)
 	}
 
-	// Convert to domain models
-	categories := make([]domain.Category, 0, len(categoryEntities))
-	for i := range categoryEntities {
-		categories = append(categories, categoryEntities[i].toDomain())
-	}
+	r.log.Info("successfully retrieved categories", "count", len(category))
 
-	r.log.Info("successfully retrieved categories", "count", len(categories))
-
-	return categories, nil
+	return category, nil
 }
 
 // GetAllTags retrieves all tags ordered by title
-func (r *Repository) GetAllTags(ctx context.Context) ([]domain.Tag, error) {
+func (r *Repository) GetAllTags(ctx context.Context) ([]Tag, error) {
 	r.log.Info("getting all tags")
 
-	var tagEntities []Tag
-	err := r.db.ModelContext(ctx, &tagEntities).
+	var tags []Tag
+	err := r.db.ModelContext(ctx, &tags).
 		Where(`"statusId" = ?`, StatusPublished).
 		OrderExpr(`"title" ASC`).
 		Select()
@@ -197,27 +193,21 @@ func (r *Repository) GetAllTags(ctx context.Context) ([]domain.Tag, error) {
 		return nil, fmt.Errorf("failed to query tags: %w", err)
 	}
 
-	// Convert to domain models
-	tags := make([]domain.Tag, 0, len(tagEntities))
-	for i := range tagEntities {
-		tags = append(tags, tagEntities[i].toDomain())
-	}
-
 	r.log.Info("successfully retrieved tags", "count", len(tags))
 
 	return tags, nil
 }
 
 // getTagsByIDs retrieves tags by their IDs
-func (r *Repository) getTagsByIDs(ctx context.Context, tagIds []int32) ([]domain.Tag, error) {
+func (r *Repository) getTagsByIDs(ctx context.Context, tagIds []int32) ([]Tag, error) {
 	if len(tagIds) == 0 {
-		return []domain.Tag{}, nil
+		return []Tag{}, nil
 	}
 
 	r.log.Debug("getting tags by IDs", "tagIds", tagIds)
 
-	var tagEntities []Tag
-	err := r.db.ModelContext(ctx, &tagEntities).
+	var tags []Tag
+	err := r.db.ModelContext(ctx, &tags).
 		Where(`"tagId" IN (?)`, pg.In(tagIds)).
 		Where(`"statusId" = ?`, StatusPublished).
 		OrderExpr(`"title" ASC`).
@@ -228,89 +218,7 @@ func (r *Repository) getTagsByIDs(ctx context.Context, tagIds []int32) ([]domain
 		return nil, fmt.Errorf("failed to query tags by ids: %w", err)
 	}
 
-	// Convert to domain models
-	tags := make([]domain.Tag, 0, len(tagEntities))
-	for i := range tagEntities {
-		tags = append(tags, tagEntities[i].toDomain())
-	}
-
 	r.log.Debug("successfully retrieved tags by IDs", "count", len(tags), "tagIds", tagIds)
 
-	return tags, nil
-}
-
-// helpers-------------------------------------------------------------------------------------
-
-// attachTagsBatch loads all tags for the given news slice in one query and attaches them back
-// preserving the order from each News.TagIds.
-func (r *Repository) attachTagsBatch(ctx context.Context, newsEntities []News) ([]domain.News, error) {
-	newsList := make([]domain.News, 0, len(newsEntities))
-
-	// Collect tag IDs across the page (set) + keep per-news tagIds to preserve order.
-	tagSet := make(map[int32]struct{})
-	newsTagIDs := make([][]int32, len(newsEntities))
-
-	for i := range newsEntities {
-		ids := newsEntities[i].TagIds
-		newsTagIDs[i] = ids
-		for _, id := range ids {
-			tagSet[id] = struct{}{}
-		}
-	}
-
-	// Flatten set to slice for IN query.
-	allTagIDs := make([]int32, 0, len(tagSet))
-	for id := range tagSet {
-		allTagIDs = append(allTagIDs, id)
-	}
-
-	// Fetch all tags once and index by ID.
-	tagsByID := make(map[int32]domain.Tag)
-	if len(allTagIDs) > 0 {
-		tags, err := r.getTagsByIDs(ctx, allTagIDs)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get tags: %w", err)
-		}
-
-		tagsByID = make(map[int32]domain.Tag, len(tags))
-		for _, t := range tags {
-			tagsByID[int32(t.TagID)] = t // adjust if TagID is already int32
-		}
-	}
-
-	// Convert to domain and attach tags back (preserving tagIds order).
-	for i := range newsEntities {
-		news := newsEntities[i].toDomain()
-
-		ids := newsTagIDs[i]
-		if len(ids) == 0 {
-			news.Tags = []domain.Tag{}
-			newsList = append(newsList, news)
-			continue
-		}
-
-		tags := make([]domain.Tag, 0, len(ids))
-		for _, id := range ids {
-			if t, ok := tagsByID[id]; ok {
-				tags = append(tags, t)
-			}
-		}
-		news.Tags = tags
-
-		newsList = append(newsList, news)
-	}
-
-	return newsList, nil
-}
-
-func (r *Repository) loadTags(ctx context.Context, tagIDs []int32) ([]domain.Tag, error) {
-	if len(tagIDs) == 0 {
-		return []domain.Tag{}, nil
-	}
-
-	tags, err := r.getTagsByIDs(ctx, tagIDs)
-	if err != nil {
-		return nil, fmt.Errorf("get tags: %w", err)
-	}
 	return tags, nil
 }

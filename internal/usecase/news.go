@@ -35,19 +35,20 @@ func (u *NewsUseCase) GetAllNews(ctx context.Context, tagID, categoryID *int, pa
 		return nil, err
 	}
 
-	// Convert News to NewsSummary (remove content)
+	// Convert postgres News to domain NewsSummary (remove content)
 	summaries := make([]domain.NewsSummary, len(newsList))
-	for i, news := range newsList {
+	for i := range newsList {
+		domainNews := newsList[i].ToDomain()
 		summaries[i] = domain.NewsSummary{
-			NewsID:      news.NewsID,
-			CategoryID:  news.CategoryID,
-			Title:       news.Title,
-			Author:      news.Author,
-			PublishedAt: news.PublishedAt,
-			UpdatedAt:   news.UpdatedAt,
-			StatusID:    news.StatusID,
-			Category:    news.Category,
-			Tags:        news.Tags,
+			NewsID:      domainNews.NewsID,
+			CategoryID:  domainNews.CategoryID,
+			Title:       domainNews.Title,
+			Author:      domainNews.Author,
+			PublishedAt: domainNews.PublishedAt,
+			UpdatedAt:   domainNews.UpdatedAt,
+			StatusID:    domainNews.StatusID,
+			Category:    domainNews.Category,
+			Tags:        domainNews.Tags,
 		}
 	}
 
@@ -77,7 +78,9 @@ func (u *NewsUseCase) GetNewsByID(ctx context.Context, newsID int) (*domain.News
 		return nil, err
 	}
 
-	return news, nil
+	// Convert postgres News to domain News
+	domainNews := news.ToDomain()
+	return &domainNews, nil
 }
 
 // GetAllCategories retrieves all categories ordered by orderNumber
@@ -90,7 +93,13 @@ func (u *NewsUseCase) GetAllCategories(ctx context.Context) ([]domain.Category, 
 		return nil, err
 	}
 
-	return categories, nil
+	// Convert postgres Category to domain Category
+	domainCategories := make([]domain.Category, len(categories))
+	for i := range categories {
+		domainCategories[i] = categories[i].ToDomain()
+	}
+
+	return domainCategories, nil
 }
 
 // GetAllTags retrieves all tags ordered by title
@@ -103,5 +112,11 @@ func (u *NewsUseCase) GetAllTags(ctx context.Context) ([]domain.Tag, error) {
 		return nil, err
 	}
 
-	return tags, nil
+	// Convert postgres Tag to domain Tag
+	domainTags := make([]domain.Tag, len(tags))
+	for i := range tags {
+		domainTags[i] = tags[i].ToDomain()
+	}
+
+	return domainTags, nil
 }

@@ -2,8 +2,6 @@ package postgres
 
 import (
 	"time"
-
-	"github.com/daniilsolovey/news-portal/internal/domain"
 )
 
 type Category struct {
@@ -33,40 +31,5 @@ type News struct {
 	StatusID    int        `pg:"statusId"`
 	TagIds      []int32    `pg:"tagIds,array"`
 	Category    *Category  `pg:"rel:has-one,fk:categoryId"`
-}
-
-func (c *Category) toDomain() domain.Category {
-	return domain.Category{
-		CategoryID:  c.CategoryID,
-		Title:       c.Title,
-		OrderNumber: c.OrderNumber,
-		StatusID:    c.StatusID,
-	}
-}
-
-func (t *Tag) toDomain() domain.Tag {
-	return domain.Tag{
-		TagID:    t.TagID,
-		Title:    t.Title,
-		StatusID: t.StatusID,
-	}
-}
-
-func (n *News) toDomain() domain.News {
-	news := domain.News{
-		NewsID:      n.NewsID,
-		CategoryID:  n.CategoryID,
-		Title:       n.Title,
-		Content:     n.Content,
-		Author:      n.Author,
-		PublishedAt: n.PublishedAt,
-		UpdatedAt:   n.UpdatedAt,
-		StatusID:    n.StatusID,
-	}
-
-	if n.Category != nil {
-		news.Category = n.Category.toDomain()
-	}
-
-	return news
+	Tags        []Tag      `pg:"-"`
 }
