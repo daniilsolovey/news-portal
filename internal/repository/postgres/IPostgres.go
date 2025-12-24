@@ -18,12 +18,11 @@ type IRepository interface {
 }
 
 type Repository struct {
-	db  *pg.DB
+	db  pg.DBI
 	log *slog.Logger
 }
 
-// New creates a new Repository with a go-pg DB connection
-func New(db *pg.DB, logger *slog.Logger) *Repository {
+func New(db pg.DBI, logger *slog.Logger) *Repository {
 	return &Repository{
 		db:  db,
 		log: logger,
@@ -32,20 +31,28 @@ func New(db *pg.DB, logger *slog.Logger) *Repository {
 
 func (r *Repository) Ping(ctx context.Context) error {
 	r.log.Info("pinging database")
-	if err := r.db.Ping(ctx); err != nil {
-		r.log.Error("database ping failed", "error", err)
-		return err
+	if db, ok := r.db.(*pg.DB); ok {
+		if err := db.Ping(ctx); err != nil {
+			r.log.Error("database ping failed", "error", err)
+			return err
+		}
+		r.log.Info("database ping successful")
+		return nil
 	}
-	r.log.Info("database ping successful")
+
 	return nil
 }
 
 func (r *Repository) Close() error {
-	r.log.Info("closing database connection pool")
-	if err := r.db.Close(); err != nil {
-		r.log.Error("error closing database connection", "error", err)
-		return err
+	if db, ok := r.db.(*pg.DB); ok {
+		r.log.Info("closing database connection pool")
+		if err := db.Close(); err != nil {
+			r.log.Error("error closing database connection", "error", err)
+			return err
+		}
+		r.log.Info("database connection pool closed")
+		return nil
 	}
-	r.log.Info("database connection pool closed")
+
 	return nil
 }

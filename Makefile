@@ -42,6 +42,28 @@ vet:
 test:
 	go test ./... -v
 
+# Run integration tests (requires test database to be running)
+test-integration:
+	go test -v ./internal/repository/postgres/...
+
+# Test Database (PostgreSQL)
+.PHONY: test-db-up test-db-down test-db-remove test-db-restart
+
+# Start test PostgreSQL container
+test-db-up:
+	docker-compose -f docker-compose.test.yml up -d
+
+# Stop test PostgreSQL container
+test-db-down:
+	docker-compose -f docker-compose.test.yml down
+
+# Remove test PostgreSQL container and volumes
+test-db-remove:
+	docker-compose -f docker-compose.test.yml down -v
+
+# Restart test PostgreSQL container
+test-db-restart: test-db-down test-db-up
+
 # Swagger
 .PHONY: swag
 

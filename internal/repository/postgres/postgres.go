@@ -123,13 +123,13 @@ func (r *Repository) GetNewsCount(ctx context.Context, tagID, categoryID *int) (
 func (r *Repository) GetNewsByID(ctx context.Context, newsID int) (*News, error) {
 	r.log.Info("getting news by ID", "newsID", newsID)
 	now := time.Now()
-	newsEntity := &News{NewsID: newsID}
+	newsEntity := &News{}
 	err := r.db.ModelContext(ctx, newsEntity).
 		Relation("Category").
 		Where(`"news"."statusId" = ?`, StatusPublished).
 		Where(`"category"."statusId" = ?`, StatusPublished).
 		Where(`"news"."publishedAt" < ?`, now).
-		WherePK().
+		Where(`"news"."newsId" = ?`, newsID).
 		Select()
 
 	if err != nil {
@@ -206,7 +206,7 @@ func (r *Repository) getTagsByIDs(ctx context.Context, tagIds []int32) ([]Tag, e
 
 	r.log.Debug("getting tags by IDs", "tagIds", tagIds)
 
-	var tags []Tag
+	tags := []Tag{}
 	err := r.db.ModelContext(ctx, &tags).
 		Where(`"tagId" IN (?)`, pg.In(tagIds)).
 		Where(`"statusId" = ?`, StatusPublished).

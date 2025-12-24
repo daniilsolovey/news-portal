@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"sort"
 )
 
 func (r *Repository) attachTagsBatch(ctx context.Context, news []News) ([]News, error) {
@@ -53,6 +54,10 @@ func (r *Repository) attachTagsBatch(ctx context.Context, news []News) ([]News, 
 				out = append(out, t)
 			}
 		}
+
+		sort.Slice(out, func(i, j int) bool {
+			return out[i].Title < out[j].Title
+		})
 		news[i].Tags = out
 	}
 
