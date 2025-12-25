@@ -94,7 +94,7 @@ func TestGetAllNews_Integration(t *testing.T) {
 		validate   func(t *testing.T, news []News)
 	}{
 		{
-			name:       "WithoutFilters_ReturnsAllPublishedNews",
+			name:       "WithoutFiltersReturnsAllPublishedNews",
 			tagID:      nil,
 			categoryID: nil,
 			minCount:   1,
@@ -110,7 +110,7 @@ func TestGetAllNews_Integration(t *testing.T) {
 			},
 		},
 		{
-			name:       "WithCategoryFilter_ReturnsFilteredNews",
+			name:       "WithCategoryFilterReturnsFilteredNews",
 			tagID:      nil,
 			categoryID: intPtr(1),
 			minCount:   2,
@@ -132,7 +132,7 @@ func TestGetAllNews_Integration(t *testing.T) {
 			},
 		},
 		{
-			name:       "WithTagFilter_ReturnsFilteredNews",
+			name:       "WithTagFilterReturnsFilteredNews",
 			tagID:      intPtr(1),
 			categoryID: nil,
 			minCount:   1,
@@ -147,7 +147,7 @@ func TestGetAllNews_Integration(t *testing.T) {
 			},
 		},
 		{
-			name:       "WithBothTagAndCategoryFilters_ReturnsFilteredNews",
+			name:       "WithBothTagAndCategoryFiltersReturnsFilteredNews",
 			tagID:      intPtr(1),
 			categoryID: intPtr(1),
 			minCount:   2,
@@ -182,7 +182,7 @@ func TestGetAllNews_Integration(t *testing.T) {
 		})
 	}
 
-	t.Run("WithPagination_ReturnsCorrectPage", func(t *testing.T) {
+	t.Run("WithPaginationReturnsCorrectPage", func(t *testing.T) {
 		page1, err := repo.GetAllNews(ctx, nil, nil, 1, 3)
 		if err != nil {
 			t.Fatalf("GetAllNews page1: %v", err)
@@ -210,7 +210,7 @@ func TestGetAllNews_Integration(t *testing.T) {
 		}
 	})
 
-	t.Run("WithInvalidPagination_ReturnsError", func(t *testing.T) {
+	t.Run("WithInvalidPaginationReturnsError", func(t *testing.T) {
 		cases := []struct {
 			name     string
 			page     int
@@ -376,10 +376,10 @@ func TestGetNewsCount_Integration(t *testing.T) {
 		categoryID *int
 		minCount   int
 	}{
-		{"WithoutFilters_ReturnsTotalCount", nil, nil, 7},
-		{"WithCategoryFilter_ReturnsFilteredCount", nil, intPtr(1), 2},
-		{"WithTagFilter_ReturnsFilteredCount", intPtr(1), nil, 7},
-		{"WithBothFilters_ReturnsFilteredCount", intPtr(1), intPtr(1), 2},
+		{"WithoutFiltersReturnsTotalCount", nil, nil, 7},
+		{"WithCategoryFilterReturnsFilteredCount", nil, intPtr(1), 2},
+		{"WithTagFilterReturnsFilteredCount", intPtr(1), nil, 7},
+		{"WithBothFiltersReturnsFilteredCount", intPtr(1), intPtr(1), 2},
 	}
 
 	for _, tt := range tests {
@@ -398,7 +398,7 @@ func TestGetNewsCount_Integration(t *testing.T) {
 func TestGetNewsByID_Integration(t *testing.T) {
 	tx, ctx, repo := withTx(t)
 
-	t.Run("WithValidID_ReturnsNews", func(t *testing.T) {
+	t.Run("WithValidIDReturnsNews", func(t *testing.T) {
 		allNews, err := repo.GetAllNews(ctx, nil, nil, 1, 1)
 		if err != nil {
 			t.Fatalf("GetAllNews: %v", err)
@@ -415,7 +415,7 @@ func TestGetNewsByID_Integration(t *testing.T) {
 		assertNewsValid(t, news, newsID)
 	})
 
-	t.Run("WithInvalidID_ReturnsError", func(t *testing.T) {
+	t.Run("WithInvalidIDReturnsError", func(t *testing.T) {
 		invalidID := 99999
 		news, err := repo.GetNewsByID(ctx, invalidID)
 		if err == nil {
@@ -429,7 +429,7 @@ func TestGetNewsByID_Integration(t *testing.T) {
 		}
 	})
 
-	t.Run("WithUnpublishedStatus_ReturnsError", func(t *testing.T) {
+	t.Run("WithUnpublishedStatusReturnsError", func(t *testing.T) {
 		unpublishedNews := News{
 			CategoryID:  1,
 			Title:       "Unpublished News",
@@ -452,7 +452,7 @@ func TestGetNewsByID_Integration(t *testing.T) {
 		}
 	})
 
-	t.Run("WithUnpublishedCategory_ReturnsError", func(t *testing.T) {
+	t.Run("WithUnpublishedCategoryReturnsError", func(t *testing.T) {
 		unpublishedCategory := Category{
 			Title:       "Unpublished Category for GetNewsByID",
 			OrderNumber: 99,
@@ -484,7 +484,7 @@ func TestGetNewsByID_Integration(t *testing.T) {
 		}
 	})
 
-	t.Run("WithFuturePublishedAt_ReturnsError", func(t *testing.T) {
+	t.Run("WithFuturePublishedAtReturnsError", func(t *testing.T) {
 		now := time.Now()
 		futureNews := News{
 			CategoryID:  1,

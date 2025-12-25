@@ -142,14 +142,12 @@ func (r *Repository) GetNewsByID(ctx context.Context, newsID int) (*News, error)
 		return nil, fmt.Errorf("failed to get news by id: %w", err)
 	}
 
-	// Load tags
 	loadTags, err := r.loadTags(ctx, newsEntity.TagIds)
 	if err != nil {
 		r.log.Error("failed to load tags", "error", err)
 		return nil, fmt.Errorf("failed to load tags: %w", err)
 	}
 
-	// Attach tags to news entity
 	newsEntity.Tags = loadTags
 	r.log.Info("successfully retrieved news by ID", "newsID", newsID,
 		"title", newsEntity.Title,

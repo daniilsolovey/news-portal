@@ -91,7 +91,7 @@ func (h *NewsHandler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// helpers: ------------------------------------------------------------------
+// helpers TODO: move to separate file
 
 func (h *NewsHandler) requireMethod(method string, handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

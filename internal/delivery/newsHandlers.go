@@ -200,7 +200,7 @@ func (h *NewsHandler) GetAllTags(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// helpers: ------------------------------------------------------------------
+// helpers TODO: move to separate file
 
 func parseOptionalInt(s string) (*int, error) {
 	if s == "" {

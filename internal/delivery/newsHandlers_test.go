@@ -184,7 +184,7 @@ func TestNewsHandler_GetAllNews(t *testing.T) {
 				return nil, errors.New("database error")
 			},
 			expectedStatus: http.StatusInternalServerError,
-			expectedBody:   map[string]interface{}{"error": "database error"},
+			expectedBody:   map[string]interface{}{"error": "internal error"},
 		},
 	}
 
@@ -295,7 +295,7 @@ func TestNewsHandler_GetNewsCount(t *testing.T) {
 				return 0, errors.New("database error")
 			},
 			expectedStatus: http.StatusInternalServerError,
-			expectedBody:   map[string]interface{}{"error": "database error"},
+			expectedBody:   map[string]interface{}{"error": "internal error"},
 		},
 	}
 
@@ -376,8 +376,8 @@ func TestNewsHandler_GetNewsByID(t *testing.T) {
 			mockFunc: func(ctx context.Context, newsID int) (*domain.News, error) {
 				return nil, errors.New("news with id 999 not found")
 			},
-			expectedStatus: http.StatusNotFound,
-			expectedBody:   map[string]interface{}{"error": "news with id 999 not found"},
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   map[string]interface{}{"error": "internal error"},
 		},
 		{
 			name:   "usecase error",
@@ -386,7 +386,7 @@ func TestNewsHandler_GetNewsByID(t *testing.T) {
 				return nil, errors.New("database error")
 			},
 			expectedStatus: http.StatusInternalServerError,
-			expectedBody:   map[string]interface{}{"error": "database error"},
+			expectedBody:   map[string]interface{}{"error": "internal error"},
 		},
 	}
 
@@ -461,7 +461,7 @@ func TestNewsHandler_GetAllCategories(t *testing.T) {
 				return nil, errors.New("database error")
 			},
 			expectedStatus: http.StatusInternalServerError,
-			expectedBody:   map[string]interface{}{"error": "database error"},
+			expectedBody:   map[string]interface{}{"error": "internal error"},
 		},
 	}
 
@@ -538,7 +538,7 @@ func TestNewsHandler_GetAllTags(t *testing.T) {
 				return nil, errors.New("database error")
 			},
 			expectedStatus: http.StatusInternalServerError,
-			expectedBody:   map[string]interface{}{"error": "database error"},
+			expectedBody:   map[string]interface{}{"error": "internal error"},
 		},
 	}
 

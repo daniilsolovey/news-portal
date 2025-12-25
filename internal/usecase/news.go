@@ -35,7 +35,6 @@ func (u *NewsUseCase) GetAllNews(ctx context.Context, tagID, categoryID *int, pa
 		return nil, err
 	}
 
-	// Convert postgres News to domain NewsSummary (remove content)
 	summaries := make([]domain.NewsSummary, len(newsList))
 	for i := range newsList {
 		domainNews := newsList[i].ToDomain()
@@ -55,7 +54,6 @@ func (u *NewsUseCase) GetAllNews(ctx context.Context, tagID, categoryID *int, pa
 	return summaries, nil
 }
 
-// GetNewsCount returns the count of news matching the optional tagID and categoryID filters
 func (u *NewsUseCase) GetNewsCount(ctx context.Context, tagID, categoryID *int) (int, error) {
 	u.log.Info("receiving news count", "tagID", tagID, "categoryID", categoryID)
 
@@ -68,7 +66,6 @@ func (u *NewsUseCase) GetNewsCount(ctx context.Context, tagID, categoryID *int) 
 	return count, nil
 }
 
-// GetNewsByID retrieves a single news item by ID with full content, category and tags
 func (u *NewsUseCase) GetNewsByID(ctx context.Context, newsID int) (*domain.News, error) {
 	u.log.Info("receiving news by ID", "newsID", newsID)
 
@@ -78,12 +75,10 @@ func (u *NewsUseCase) GetNewsByID(ctx context.Context, newsID int) (*domain.News
 		return nil, err
 	}
 
-	// Convert postgres News to domain News
 	domainNews := news.ToDomain()
 	return &domainNews, nil
 }
 
-// GetAllCategories retrieves all categories ordered by orderNumber
 func (u *NewsUseCase) GetAllCategories(ctx context.Context) ([]domain.Category, error) {
 	u.log.Info("receiving all categories")
 
@@ -93,7 +88,6 @@ func (u *NewsUseCase) GetAllCategories(ctx context.Context) ([]domain.Category, 
 		return nil, err
 	}
 
-	// Convert postgres Category to domain Category
 	domainCategories := make([]domain.Category, len(categories))
 	for i := range categories {
 		domainCategories[i] = categories[i].ToDomain()
@@ -102,7 +96,6 @@ func (u *NewsUseCase) GetAllCategories(ctx context.Context) ([]domain.Category, 
 	return domainCategories, nil
 }
 
-// GetAllTags retrieves all tags ordered by title
 func (u *NewsUseCase) GetAllTags(ctx context.Context) ([]domain.Tag, error) {
 	u.log.Info("receiving all tags")
 
@@ -112,7 +105,6 @@ func (u *NewsUseCase) GetAllTags(ctx context.Context) ([]domain.Tag, error) {
 		return nil, err
 	}
 
-	// Convert postgres Tag to domain Tag
 	domainTags := make([]domain.Tag, len(tags))
 	for i := range tags {
 		domainTags[i] = tags[i].ToDomain()

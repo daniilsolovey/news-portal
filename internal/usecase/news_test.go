@@ -180,7 +180,7 @@ func TestNewsUseCase_GetAllNews(t *testing.T) {
 						OrderNumber: 2,
 						StatusID:    1,
 					},
-					Tags: []domain.Tag{},
+					Tags: nil,
 				},
 			},
 			expectedError: nil,
@@ -289,7 +289,7 @@ func TestNewsUseCase_GetAllNews(t *testing.T) {
 					PublishedAt: testTime,
 					StatusID:    1,
 					Category:    domain.Category{CategoryID: 1, Title: "Cat", OrderNumber: 1, StatusID: 1},
-					Tags:        []domain.Tag{},
+					Tags:        nil,
 				},
 			},
 			expectedError: nil,
@@ -315,8 +315,6 @@ func TestNewsUseCase_GetAllNews(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.expectedResult, result)
-				// Verify that content field is not present in summaries
-				// NewsSummary doesn't have Content field, which is verified by the conversion logic
 			}
 		})
 	}
