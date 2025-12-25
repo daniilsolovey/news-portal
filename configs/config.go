@@ -31,4 +31,5 @@ func Init() {
 		"DATABASE_URL", "postgres://user:password@localhost:5432/news_portal?sslmode=disable")
 	viper.SetDefault("DB_MAX_CONNS", 5)
 	viper.SetDefault("DB_MAX_CONN_LIFETIME", "300s")
+	viper.SetDefault("DB_LOG_QUERIES", false)
 }

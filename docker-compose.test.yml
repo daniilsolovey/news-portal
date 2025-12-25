@@ -1,0 +1,22 @@
+services:
+  postgres-test:
+    image: postgres:15
+    container_name: postgres-news-portal-test
+    environment:
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: news_portal_test
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata-test:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d news_portal_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata-test:
+

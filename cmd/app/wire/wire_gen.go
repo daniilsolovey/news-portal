@@ -7,9 +7,10 @@
 package wire
 
 import (
-	"github.com/daniilsolovey/news-portal/internal/repository/postgres"
-	"github.com/gin-gonic/gin"
 	"log/slog"
+	"net/http"
+
+	"github.com/daniilsolovey/news-portal/internal/repository/postgres"
 )
 
 // Injectors from wire.go:
@@ -39,5 +40,5 @@ func Initialize() (*Service, func(), error) {
 type Service struct {
 	Postgres *postgres.Repository
 	Logger   *slog.Logger
-	Engine   *gin.Engine
+	Engine   http.Handler
 }
