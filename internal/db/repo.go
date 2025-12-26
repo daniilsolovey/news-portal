@@ -109,21 +109,15 @@ func (r *Repository) GetAllNews(ctx context.Context, tagID, categoryID *int,
 		return nil, fmt.Errorf("failed to query news: %w", err)
 	}
 
-	newsList, err := r.attachTagsBatch(ctx, news)
-	if err != nil {
-		r.log.Error("failed to attach tags to news", "error", err)
-		return nil, fmt.Errorf("failed to attach tags to news: %w", err)
-	}
-
 	r.log.Info("successfully retrieved news",
-		"count", len(newsList),
+		"count", len(news),
 		"tagID", tagID,
 		"categoryID", categoryID,
 		"page", page,
 		"pageSize", pageSize,
 	)
 
-	return newsList, nil
+	return news, nil
 }
 
 func (r *Repository) GetNewsCount(ctx context.Context, tagID, categoryID *int) (int, error) {
@@ -162,8 +156,8 @@ func (r *Repository) GetNewsCount(ctx context.Context, tagID, categoryID *int) (
 func (r *Repository) GetNewsByID(ctx context.Context, newsID int) (*News, error) {
 	r.log.Info("getting news by ID", "newsID", newsID)
 	now := time.Now()
-	newsEntity := &News{}
-	err := r.db.ModelContext(ctx, newsEntity).
+	news := &News{}
+	err := r.db.ModelContext(ctx, news).
 		Relation("Category").
 		Where(`"news"."statusId" = ?`, StatusPublished).
 		Where(`"category"."statusId" = ?`, StatusPublished).
@@ -181,18 +175,11 @@ func (r *Repository) GetNewsByID(ctx context.Context, newsID int) (*News, error)
 		return nil, fmt.Errorf("failed to get news by id: %w", err)
 	}
 
-	loadTags, err := r.loadTags(ctx, newsEntity.TagIds)
-	if err != nil {
-		r.log.Error("failed to load tags", "error", err)
-		return nil, fmt.Errorf("failed to load tags: %w", err)
-	}
-
-	newsEntity.Tags = loadTags
 	r.log.Info("successfully retrieved news by ID", "newsID", newsID,
-		"title", newsEntity.Title,
+		"title", news.Title,
 	)
 
-	return newsEntity, nil
+	return news, nil
 }
 
 func (r *Repository) GetAllCategories(ctx context.Context) ([]Category, error) {
@@ -233,7 +220,7 @@ func (r *Repository) GetAllTags(ctx context.Context) ([]Tag, error) {
 	return tags, nil
 }
 
-func (r *Repository) getTagsByIDs(ctx context.Context, tagIds []int32) ([]Tag, error) {
+func (r *Repository) GetTagsByIDs(ctx context.Context, tagIds []int32) ([]Tag, error) {
 	if len(tagIds) == 0 {
 		return []Tag{}, nil
 	}

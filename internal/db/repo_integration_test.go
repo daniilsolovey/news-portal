@@ -138,10 +138,10 @@ func TestGetAllNews_Integration(t *testing.T) {
 			minCount:   1,
 			validate: func(t *testing.T, news []News) {
 				t.Helper()
-				wantTagID := 1
+				wantTagID := int32(1)
 				for _, item := range news {
-					if !hasTag(item.Tags, wantTagID) {
-						t.Errorf("news %d (%s) does not have tag %d", item.NewsID, item.Title, wantTagID)
+					if !hasTagID(item.TagIds, wantTagID) {
+						t.Errorf("news %d (%s) does not have tag %d in TagIds", item.NewsID, item.Title, wantTagID)
 					}
 				}
 			},
@@ -153,14 +153,14 @@ func TestGetAllNews_Integration(t *testing.T) {
 			minCount:   2,
 			validate: func(t *testing.T, news []News) {
 				t.Helper()
-				wantTagID := 1
+				wantTagID := int32(1)
 				wantCategoryID := 1
 				for _, item := range news {
 					if item.CategoryID != wantCategoryID {
 						t.Errorf("expected categoryID %d, got %d", wantCategoryID, item.CategoryID)
 					}
-					if !hasTag(item.Tags, wantTagID) {
-						t.Errorf("news %d (%s) does not have tag %d", item.NewsID, item.Title, wantTagID)
+					if !hasTagID(item.TagIds, wantTagID) {
+						t.Errorf("news %d (%s) does not have tag %d in TagIds", item.NewsID, item.Title, wantTagID)
 					}
 				}
 			},
@@ -602,7 +602,7 @@ func TestGetAllTags_Integration(t *testing.T) {
 func TestGetTagsByIDs_Integration(t *testing.T) {
 	tx, ctx, repo := withTx(t)
 
-	t.Run("LoadsTagsCorrectlyInGetAllNews", func(t *testing.T) {
+	t.Run("ReturnsTagIdsInGetAllNews", func(t *testing.T) {
 		news, err := repo.GetAllNews(ctx, nil, nil, 1, 10)
 		if err != nil {
 			t.Fatalf("GetAllNews: %v", err)
@@ -614,35 +614,24 @@ func TestGetTagsByIDs_Integration(t *testing.T) {
 		for i := range news {
 			item := news[i]
 
-			if len(item.TagIds) == 0 {
+			// GetAllNews in db layer should return TagIds but not load Tags
+			// Tags should be empty as they are loaded in newsportal layer
+			if len(item.TagIds) > 0 {
+				// If TagIds exist, Tags should be empty (not loaded in db layer)
+				if len(item.Tags) != 0 {
+					t.Fatalf("news %d has TagIds but Tags should be empty in db layer (Tags are loaded in newsportal layer)", item.NewsID)
+				}
+			} else {
+				// If no TagIds, Tags should also be empty
 				if len(item.Tags) != 0 {
 					t.Fatalf("news %d has no TagIds but has Tags", item.NewsID)
 				}
-				continue
 			}
 
-			if len(item.Tags) == 0 {
-				t.Fatalf("news %d has TagIds but no Tags loaded", item.NewsID)
-			}
-
-			for _, tag := range item.Tags {
-				assertTagValid(t, tag)
-
-				found := false
-				for _, tagID := range item.TagIds {
-					if int32(tag.TagID) == tagID {
-						found = true
-						break
-					}
-				}
-				if !found {
-					t.Fatalf("news %d has tag %d not present in TagIds", item.NewsID, tag.TagID)
-				}
-			}
-
-			for j := 0; j < len(item.Tags)-1; j++ {
-				if item.Tags[j].Title > item.Tags[j+1].Title {
-					t.Fatalf("news %d tags not sorted by title", item.NewsID)
+			// Verify that TagIds are valid (non-negative)
+			for _, tagID := range item.TagIds {
+				if tagID <= 0 {
+					t.Fatalf("news %d has invalid TagID: %d", item.NewsID, tagID)
 				}
 			}
 		}
@@ -658,9 +647,9 @@ func TestGetTagsByIDs_Integration(t *testing.T) {
 		}
 
 		mixedTagIDs := []int32{1, int32(unpublishedTag.TagID)}
-		tags, err := repo.loadTags(ctx, mixedTagIDs)
+		tags, err := repo.GetTagsByIDs(ctx, mixedTagIDs)
 		if err != nil {
-			t.Fatalf("loadTags: %v", err)
+			t.Fatalf("GetTagsByIDs: %v", err)
 		}
 
 		for _, tag := range tags {
@@ -691,9 +680,9 @@ func TestGetTagsByIDs_Integration(t *testing.T) {
 			t.Fatalf("NewsID was not set after insert")
 		}
 
-		got, err := repo.loadTags(ctx, nil)
+		got, err := repo.GetTagsByIDs(ctx, nil)
 		if err != nil {
-			t.Fatalf("loadTags empty: %v", err)
+			t.Fatalf("GetTagsByIDs empty: %v", err)
 		}
 		if got == nil || len(got) != 0 {
 			t.Fatalf("expected empty slice, got %+v", got)
@@ -717,9 +706,9 @@ func TestGetTagsByIDs_Integration(t *testing.T) {
 			t.Fatalf("NewsID was not set after insert")
 		}
 
-		got, err := repo.loadTags(ctx, newsWithNonExistentTags.TagIds)
+		got, err := repo.GetTagsByIDs(ctx, newsWithNonExistentTags.TagIds)
 		if err != nil {
-			t.Fatalf("loadTags non-existent: %v", err)
+			t.Fatalf("GetTagsByIDs non-existent: %v", err)
 		}
 		if got == nil || len(got) != 0 {
 			t.Fatalf("expected empty slice, got %+v", got)
@@ -729,9 +718,9 @@ func TestGetTagsByIDs_Integration(t *testing.T) {
 
 func intPtr(i int) *int { return &i }
 
-func hasTag(tags []Tag, id int) bool {
-	for _, t := range tags {
-		if t.TagID == id {
+func hasTagID(tagIds []int32, id int32) bool {
+	for _, tagID := range tagIds {
+		if tagID == id {
 			return true
 		}
 	}
@@ -781,8 +770,8 @@ func assertNewsValid(t *testing.T, news *News, newsID int) {
 	if news.Category == nil || news.Category.CategoryID == 0 {
 		t.Fatalf("category not loaded")
 	}
-	if len(news.TagIds) > 0 && len(news.Tags) == 0 {
-		t.Fatalf("TagIds present but Tags not loaded")
+	if len(news.TagIds) > 0 && len(news.Tags) != 0 {
+		t.Fatalf("Tags should be empty in db layer (Tags are loaded in newsportal layer)")
 	}
 }
 

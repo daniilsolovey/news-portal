@@ -2,6 +2,7 @@ package newsportal
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	postgres "github.com/daniilsolovey/news-portal/internal/db"
@@ -25,19 +26,25 @@ func (u *Manager) GetAllNews(ctx context.Context, tagID, categoryID *int, page, 
 	u.log.Info("receiving all news", "tagID", tagID, "categoryID",
 		categoryID, "page", page, "pageSize", pageSize)
 
-	dbNewsList, err := u.db.GetAllNews(ctx, tagID, categoryID,
+	dbNews, err := u.db.GetAllNews(ctx, tagID, categoryID,
 		page, pageSize)
 	if err != nil {
 		u.log.Error("failed to get all news", "error", err)
 		return nil, err
 	}
 
-	summaries := make([]News, len(dbNewsList))
-	for i := range dbNewsList {
-		summaries[i] = NewNewsSummary(&dbNewsList[i])
+	dbNewsWithTags, err := u.attachTagsBatch(ctx, dbNews)
+	if err != nil {
+		u.log.Error("failed to attach tags to news", "error", err)
+		return nil, fmt.Errorf("failed to attach tags to news: %w", err)
 	}
 
-	return summaries, nil
+	news := make([]News, len(dbNewsWithTags))
+	for i := range dbNewsWithTags {
+		news[i] = NewNewsSummary(dbNewsWithTags[i])
+	}
+
+	return news, nil
 }
 
 func (u *Manager) GetNewsCount(ctx context.Context, tagID, categoryID *int) (int, error) {
@@ -61,8 +68,14 @@ func (u *Manager) GetNewsByID(ctx context.Context, newsID int) (*News, error) {
 		return nil, err
 	}
 
-	newsportalNews := NewNews(dbNews)
-	return &newsportalNews, nil
+	dbNewsWithTags, err := u.attachTagsBatch(ctx, []postgres.News{*dbNews})
+	if err != nil {
+		u.log.Error("failed to attach tags to news", "error", err)
+		return nil, fmt.Errorf("failed to attach tags to news: %w", err)
+	}
+
+	news := NewNews(dbNewsWithTags[0])
+	return &news, nil
 }
 
 func (u *Manager) GetAllCategories(ctx context.Context) ([]Category, error) {
@@ -76,7 +89,7 @@ func (u *Manager) GetAllCategories(ctx context.Context) ([]Category, error) {
 
 	categories := make([]Category, len(dbCategories))
 	for i := range dbCategories {
-		categories[i] = NewCategory(&dbCategories[i])
+		categories[i] = NewCategory(dbCategories[i])
 	}
 
 	return categories, nil
@@ -93,7 +106,7 @@ func (u *Manager) GetAllTags(ctx context.Context) ([]Tag, error) {
 
 	tags := make([]Tag, len(dbTags))
 	for i := range dbTags {
-		tags[i] = NewTag(&dbTags[i])
+		tags[i] = NewTag(dbTags[i])
 	}
 
 	return tags, nil
