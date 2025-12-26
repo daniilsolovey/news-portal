@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/daniilsolovey/news-portal/internal/repository/postgres"
+	postgres "github.com/daniilsolovey/news-portal/internal/db"
 	"github.com/google/wire"
 )
 
@@ -21,7 +21,6 @@ func Initialize() (*Service, func(), error) {
 	wire.Build(
 		ProvideLogger,
 		ProvidePostgres,
-		ProvideRepository,
 		ProvideUseCase,
 		ProvideHandler,
 		ProvideEngine,

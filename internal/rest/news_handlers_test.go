@@ -1,4 +1,4 @@
-package delivery
+package rest
 
 import (
 	"context"
@@ -10,21 +10,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daniilsolovey/news-portal/internal/domain"
+	"github.com/daniilsolovey/news-portal/internal/newsportal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// mockNewsUseCase is a manual stub implementation of INewsUseCase for testing
+// mockNewsUseCase is a manual stub implementation for testing
 type mockNewsUseCase struct {
-	getAllNewsFunc       func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.NewsSummary, error)
+	getAllNewsFunc       func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error)
 	getNewsCountFunc     func(ctx context.Context, tagID, categoryID *int) (int, error)
-	getNewsByIDFunc      func(ctx context.Context, newsID int) (*domain.News, error)
-	getAllCategoriesFunc func(ctx context.Context) ([]domain.Category, error)
-	getAllTagsFunc       func(ctx context.Context) ([]domain.Tag, error)
+	getNewsByIDFunc      func(ctx context.Context, newsID int) (*newsportal.News, error)
+	getAllCategoriesFunc func(ctx context.Context) ([]newsportal.Category, error)
+	getAllTagsFunc       func(ctx context.Context) ([]newsportal.Tag, error)
 }
 
-func (m *mockNewsUseCase) GetAllNews(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.NewsSummary, error) {
+func (m *mockNewsUseCase) GetAllNews(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error) {
 	if m.getAllNewsFunc != nil {
 		return m.getAllNewsFunc(ctx, tagID, categoryID, page, pageSize)
 	}
@@ -38,21 +38,21 @@ func (m *mockNewsUseCase) GetNewsCount(ctx context.Context, tagID, categoryID *i
 	return 0, nil
 }
 
-func (m *mockNewsUseCase) GetNewsByID(ctx context.Context, newsID int) (*domain.News, error) {
+func (m *mockNewsUseCase) GetNewsByID(ctx context.Context, newsID int) (*newsportal.News, error) {
 	if m.getNewsByIDFunc != nil {
 		return m.getNewsByIDFunc(ctx, newsID)
 	}
 	return nil, nil
 }
 
-func (m *mockNewsUseCase) GetAllCategories(ctx context.Context) ([]domain.Category, error) {
+func (m *mockNewsUseCase) GetAllCategories(ctx context.Context) ([]newsportal.Category, error) {
 	if m.getAllCategoriesFunc != nil {
 		return m.getAllCategoriesFunc(ctx)
 	}
 	return nil, nil
 }
 
-func (m *mockNewsUseCase) GetAllTags(ctx context.Context) ([]domain.Tag, error) {
+func (m *mockNewsUseCase) GetAllTags(ctx context.Context) ([]newsportal.Tag, error) {
 	if m.getAllTagsFunc != nil {
 		return m.getAllTagsFunc(ctx)
 	}
@@ -69,19 +69,19 @@ func TestNewsHandler_GetAllNews(t *testing.T) {
 	tests := []struct {
 		name           string
 		queryParams    string
-		mockFunc       func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.NewsSummary, error)
+		mockFunc       func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error)
 		expectedStatus int
 		expectedBody   interface{}
 	}{
 		{
 			name:        "success without filters",
 			queryParams: "",
-			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.NewsSummary, error) {
+			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error) {
 				assert.Nil(t, tagID)
 				assert.Nil(t, categoryID)
 				assert.Equal(t, 1, page)
 				assert.Equal(t, 10, pageSize)
-				return []domain.NewsSummary{
+				return []newsportal.NewsSummary{
 					{
 						NewsID:      1,
 						CategoryID:  1,
@@ -97,46 +97,46 @@ func TestNewsHandler_GetAllNews(t *testing.T) {
 		{
 			name:        "success with tagId filter",
 			queryParams: "?tagId=5",
-			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.NewsSummary, error) {
+			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error) {
 				require.NotNil(t, tagID)
 				assert.Equal(t, 5, *tagID)
 				assert.Nil(t, categoryID)
-				return []domain.NewsSummary{}, nil
+				return []newsportal.NewsSummary{}, nil
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
 			name:        "success with categoryId filter",
 			queryParams: "?categoryId=3",
-			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.NewsSummary, error) {
+			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error) {
 				assert.Nil(t, tagID)
 				require.NotNil(t, categoryID)
 				assert.Equal(t, 3, *categoryID)
-				return []domain.NewsSummary{}, nil
+				return []newsportal.NewsSummary{}, nil
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
 			name:        "success with pagination",
 			queryParams: "?page=2&pageSize=20",
-			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.NewsSummary, error) {
+			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error) {
 				assert.Equal(t, 2, page)
 				assert.Equal(t, 20, pageSize)
-				return []domain.NewsSummary{}, nil
+				return []newsportal.NewsSummary{}, nil
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
 			name:        "success with all filters",
 			queryParams: "?tagId=1&categoryId=2&page=3&pageSize=15",
-			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.NewsSummary, error) {
+			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error) {
 				require.NotNil(t, tagID)
 				require.NotNil(t, categoryID)
 				assert.Equal(t, 1, *tagID)
 				assert.Equal(t, 2, *categoryID)
 				assert.Equal(t, 3, page)
 				assert.Equal(t, 15, pageSize)
-				return []domain.NewsSummary{}, nil
+				return []newsportal.NewsSummary{}, nil
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -171,16 +171,16 @@ func TestNewsHandler_GetAllNews(t *testing.T) {
 		{
 			name:        "pageSize capped at 100",
 			queryParams: "?pageSize=200",
-			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.NewsSummary, error) {
+			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error) {
 				assert.Equal(t, 100, pageSize)
-				return []domain.NewsSummary{}, nil
+				return []newsportal.NewsSummary{}, nil
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
 			name:        "usecase error",
 			queryParams: "",
-			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]domain.NewsSummary, error) {
+			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error) {
 				return nil, errors.New("database error")
 			},
 			expectedStatus: http.StatusInternalServerError,
@@ -209,7 +209,7 @@ func TestNewsHandler_GetAllNews(t *testing.T) {
 				assert.EqualValues(t, tt.expectedBody, response)
 			} else if tt.expectedStatus == http.StatusOK {
 				// Verify JSON is valid
-				var summaries []domain.NewsSummary
+				var summaries []NewsSummary
 				err := json.Unmarshal(w.Body.Bytes(), &summaries)
 				require.NoError(t, err)
 			}
@@ -335,16 +335,16 @@ func TestNewsHandler_GetNewsByID(t *testing.T) {
 	tests := []struct {
 		name           string
 		pathID         string
-		mockFunc       func(ctx context.Context, newsID int) (*domain.News, error)
+		mockFunc       func(ctx context.Context, newsID int) (*newsportal.News, error)
 		expectedStatus int
 		expectedBody   interface{}
 	}{
 		{
 			name:   "success",
 			pathID: "1",
-			mockFunc: func(ctx context.Context, newsID int) (*domain.News, error) {
+			mockFunc: func(ctx context.Context, newsID int) (*newsportal.News, error) {
 				assert.Equal(t, 1, newsID)
-				return &domain.News{
+				return &newsportal.News{
 					NewsID:      1,
 					CategoryID:  1,
 					Title:       "Test News",
@@ -352,13 +352,13 @@ func TestNewsHandler_GetNewsByID(t *testing.T) {
 					Author:      "Author",
 					PublishedAt: testTime,
 					StatusID:    1,
-					Category: domain.Category{
+					Category: newsportal.Category{
 						CategoryID:  1,
 						Title:       "Category",
 						OrderNumber: 1,
 						StatusID:    1,
 					},
-					Tags: []domain.Tag{},
+					Tags: []newsportal.Tag{},
 				}, nil
 			},
 			expectedStatus: http.StatusOK,
@@ -373,7 +373,7 @@ func TestNewsHandler_GetNewsByID(t *testing.T) {
 		{
 			name:   "not found",
 			pathID: "999",
-			mockFunc: func(ctx context.Context, newsID int) (*domain.News, error) {
+			mockFunc: func(ctx context.Context, newsID int) (*newsportal.News, error) {
 				return nil, errors.New("news with id 999 not found")
 			},
 			expectedStatus: http.StatusInternalServerError,
@@ -382,7 +382,7 @@ func TestNewsHandler_GetNewsByID(t *testing.T) {
 		{
 			name:   "usecase error",
 			pathID: "1",
-			mockFunc: func(ctx context.Context, newsID int) (*domain.News, error) {
+			mockFunc: func(ctx context.Context, newsID int) (*newsportal.News, error) {
 				return nil, errors.New("database error")
 			},
 			expectedStatus: http.StatusInternalServerError,
@@ -410,7 +410,7 @@ func TestNewsHandler_GetNewsByID(t *testing.T) {
 				require.NoError(t, err)
 				assert.EqualValues(t, tt.expectedBody, response)
 			} else if tt.expectedStatus == http.StatusOK {
-				var news domain.News
+				var news News
 				err := json.Unmarshal(w.Body.Bytes(), &news)
 				require.NoError(t, err)
 				assert.Equal(t, 1, news.NewsID)
@@ -424,14 +424,14 @@ func TestNewsHandler_GetAllCategories(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		mockFunc       func(ctx context.Context) ([]domain.Category, error)
+		mockFunc       func(ctx context.Context) ([]newsportal.Category, error)
 		expectedStatus int
 		expectedBody   interface{}
 	}{
 		{
 			name: "success",
-			mockFunc: func(ctx context.Context) ([]domain.Category, error) {
-				return []domain.Category{
+			mockFunc: func(ctx context.Context) ([]newsportal.Category, error) {
+				return []newsportal.Category{
 					{
 						CategoryID:  1,
 						Title:       "Category 1",
@@ -450,14 +450,14 @@ func TestNewsHandler_GetAllCategories(t *testing.T) {
 		},
 		{
 			name: "empty list",
-			mockFunc: func(ctx context.Context) ([]domain.Category, error) {
-				return []domain.Category{}, nil
+			mockFunc: func(ctx context.Context) ([]newsportal.Category, error) {
+				return []newsportal.Category{}, nil
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
 			name: "usecase error",
-			mockFunc: func(ctx context.Context) ([]domain.Category, error) {
+			mockFunc: func(ctx context.Context) ([]newsportal.Category, error) {
 				return nil, errors.New("database error")
 			},
 			expectedStatus: http.StatusInternalServerError,
@@ -485,7 +485,7 @@ func TestNewsHandler_GetAllCategories(t *testing.T) {
 				require.NoError(t, err)
 				assert.EqualValues(t, tt.expectedBody, response)
 			} else if tt.expectedStatus == http.StatusOK {
-				var categories []domain.Category
+				var categories []Category
 				err := json.Unmarshal(w.Body.Bytes(), &categories)
 				require.NoError(t, err)
 				if tt.name == "success" {
@@ -503,14 +503,14 @@ func TestNewsHandler_GetAllTags(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		mockFunc       func(ctx context.Context) ([]domain.Tag, error)
+		mockFunc       func(ctx context.Context) ([]newsportal.Tag, error)
 		expectedStatus int
 		expectedBody   interface{}
 	}{
 		{
 			name: "success",
-			mockFunc: func(ctx context.Context) ([]domain.Tag, error) {
-				return []domain.Tag{
+			mockFunc: func(ctx context.Context) ([]newsportal.Tag, error) {
+				return []newsportal.Tag{
 					{
 						TagID:    1,
 						Title:    "Tag 1",
@@ -527,14 +527,14 @@ func TestNewsHandler_GetAllTags(t *testing.T) {
 		},
 		{
 			name: "empty list",
-			mockFunc: func(ctx context.Context) ([]domain.Tag, error) {
-				return []domain.Tag{}, nil
+			mockFunc: func(ctx context.Context) ([]newsportal.Tag, error) {
+				return []newsportal.Tag{}, nil
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
 			name: "usecase error",
-			mockFunc: func(ctx context.Context) ([]domain.Tag, error) {
+			mockFunc: func(ctx context.Context) ([]newsportal.Tag, error) {
 				return nil, errors.New("database error")
 			},
 			expectedStatus: http.StatusInternalServerError,
@@ -562,7 +562,7 @@ func TestNewsHandler_GetAllTags(t *testing.T) {
 				require.NoError(t, err)
 				assert.EqualValues(t, tt.expectedBody, response)
 			} else if tt.expectedStatus == http.StatusOK {
-				var tags []domain.Tag
+				var tags []Tag
 				err := json.Unmarshal(w.Body.Bytes(), &tags)
 				require.NoError(t, err)
 				if tt.name == "success" {

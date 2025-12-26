@@ -10,7 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/daniilsolovey/news-portal/internal/repository/postgres"
+	postgres "github.com/daniilsolovey/news-portal/internal/db"
 )
 
 // Injectors from wire.go:
@@ -21,8 +21,7 @@ func Initialize() (*Service, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	iRepository := ProvideRepository(repository)
-	newsUseCase := ProvideUseCase(iRepository, logger)
+	newsUseCase := ProvideUseCase(repository, logger)
 	newsHandler := ProvideHandler(newsUseCase, logger)
 	engine := ProvideEngine(newsHandler)
 	service := &Service{

@@ -21,7 +21,7 @@ var (
 
 const (
 	testDBURL       = "postgres://test_user:test_password@localhost:5433/news_portal_test?sslmode=disable"
-	migrationsDir   = "../../../migrations"
+	migrationsDir   = "../../migrations"
 	statusPublished = StatusPublished
 )
 

@@ -1,4 +1,4 @@
-package delivery
+package rest
 
 import (
 	"encoding/json"
@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/daniilsolovey/news-portal/internal/usecase"
+	"github.com/daniilsolovey/news-portal/internal/newsportal"
 )
 
 const (
@@ -18,12 +18,12 @@ const (
 
 // NewsHandler handles HTTP requests
 type NewsHandler struct {
-	uc  usecase.INewsUseCase
+	uc  *newsportal.Manager
 	log *slog.Logger
 }
 
 // NewNewsHandler creates a new instance of NewsHandler
-func NewNewsHandler(uc usecase.INewsUseCase, log *slog.Logger) *NewsHandler {
+func NewNewsHandler(uc *newsportal.Manager, log *slog.Logger) *NewsHandler {
 	return &NewsHandler{
 		uc:  uc,
 		log: log,
@@ -39,7 +39,7 @@ func NewNewsHandler(uc usecase.INewsUseCase, log *slog.Logger) *NewsHandler {
 // @Param categoryId query int false "Filter by category ID"
 // @Param page query int false "Page number (default: 1)"
 // @Param pageSize query int false "Page size (default: 10)"
-// @Success 200 {array} domain.NewsSummary
+// @Success 200 {array} rest.NewsSummary
 // @Failure 400,500 {object} map[string]string
 // @Router /api/v1/all_news [get]
 func (h *NewsHandler) GetAllNews(w http.ResponseWriter, r *http.Request) {
@@ -73,11 +73,16 @@ func (h *NewsHandler) GetAllNews(w http.ResponseWriter, r *http.Request) {
 		pageSize = maxPageSize
 	}
 
-	summaries, err := h.uc.GetAllNews(r.Context(), tagID, categoryID, page, pageSize)
+	newsportalSummaries, err := h.uc.GetAllNews(r.Context(), tagID, categoryID, page, pageSize)
 	if err != nil {
 		h.log.Error("failed to get all news", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
+	}
+
+	summaries := make([]News, len(newsportalSummaries))
+	for i := range newsportalSummaries {
+		summaries[i] = NewNewsSummary(newsportalSummaries[i])
 	}
 
 	if err := writeJSON(w, http.StatusOK, summaries); err != nil {
@@ -128,7 +133,7 @@ func (h *NewsHandler) GetNewsCount(w http.ResponseWriter, r *http.Request) {
 // @Tags news
 // @Produce json
 // @Param id path int true "News ID"
-// @Success 200 {object} domain.News
+// @Success 200 {object} rest.News
 // @Failure 400,404,500 {object} map[string]string
 // @Router /api/v1/news/{id} [get]
 func (h *NewsHandler) GetNewsByID(w http.ResponseWriter, r *http.Request) {
@@ -145,13 +150,16 @@ func (h *NewsHandler) GetNewsByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	news, err := h.uc.GetNewsByID(r.Context(), id)
+	newsportalNews, err := h.uc.GetNewsByID(r.Context(), id)
 	if err != nil {
 		h.log.Error("failed to get news by ID", "error", err, "id", id)
 		// TODO:Check if not found record error
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+
+	// Convert newsportal model to rest model
+	news := NewNews(*newsportalNews)
 
 	if err := writeJSON(w, http.StatusOK, news); err != nil {
 		h.log.Warn("failed to write json response", "error", err)
@@ -163,15 +171,21 @@ func (h *NewsHandler) GetNewsByID(w http.ResponseWriter, r *http.Request) {
 // @Description Retrieves all categories ordered by orderNumber
 // @Tags categories
 // @Produce json
-// @Success 200 {array} domain.Category
+// @Success 200 {array} rest.Category
 // @Failure 500 {object} map[string]string
 // @Router /api/v1/categories [get]
 func (h *NewsHandler) GetAllCategories(w http.ResponseWriter, r *http.Request) {
-	categories, err := h.uc.GetAllCategories(r.Context())
+	newsportalCategories, err := h.uc.GetAllCategories(r.Context())
 	if err != nil {
 		h.log.Error("failed to get all categories", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
+	}
+
+	// Convert newsportal models to rest models
+	categories := make([]Category, len(newsportalCategories))
+	for i := range newsportalCategories {
+		categories[i] = NewCategory(newsportalCategories[i])
 	}
 
 	if err := writeJSON(w, http.StatusOK, categories); err != nil {
@@ -184,15 +198,21 @@ func (h *NewsHandler) GetAllCategories(w http.ResponseWriter, r *http.Request) {
 // @Description Retrieves all tags ordered by title
 // @Tags tags
 // @Produce json
-// @Success 200 {array} domain.Tag
+// @Success 200 {array} rest.Tag
 // @Failure 500 {object} map[string]string
 // @Router /api/v1/tags [get]
 func (h *NewsHandler) GetAllTags(w http.ResponseWriter, r *http.Request) {
-	tags, err := h.uc.GetAllTags(r.Context())
+	newsportalTags, err := h.uc.GetAllTags(r.Context())
 	if err != nil {
 		h.log.Error("failed to get all tags", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
+	}
+
+	// Convert newsportal models to rest models
+	tags := make([]Tag, len(newsportalTags))
+	for i := range newsportalTags {
+		tags[i] = NewTag(newsportalTags[i])
 	}
 
 	if err := writeJSON(w, http.StatusOK, tags); err != nil {
