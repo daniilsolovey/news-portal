@@ -5,23 +5,23 @@ package wire
 
 import (
 	"log/slog"
-	"net/http"
 
 	postgres "github.com/daniilsolovey/news-portal/internal/db"
 	"github.com/google/wire"
+	"github.com/labstack/echo/v4"
 )
 
 type Service struct {
 	Postgres *postgres.Repository
 	Logger   *slog.Logger
-	Engine   http.Handler
+	Engine   *echo.Echo
 }
 
 func Initialize() (*Service, func(), error) {
 	wire.Build(
 		ProvideLogger,
-		ProvidePostgres,
-		ProvideUseCase,
+		ProvideDB,
+		ProvideNewsPortal,
 		ProvideHandler,
 		ProvideEngine,
 		wire.Struct(new(Service), "*"),

@@ -3,7 +3,6 @@ package wire
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"os"
 	"time"
 
@@ -11,10 +10,11 @@ import (
 	"github.com/daniilsolovey/news-portal/internal/newsportal"
 	"github.com/daniilsolovey/news-portal/internal/rest"
 	"github.com/go-pg/pg/v10"
+	"github.com/labstack/echo/v4"
 	"github.com/spf13/viper"
 )
 
-func ProvidePostgres(logger *slog.Logger) (*postgres.Repository, func(), error) {
+func ProvideDB(logger *slog.Logger) (*postgres.Repository, func(), error) {
 	url := viper.GetString("DATABASE_URL")
 
 	opt, err := pg.ParseURL(url)
@@ -37,12 +37,6 @@ func ProvidePostgres(logger *slog.Logger) (*postgres.Repository, func(), error) 
 	}
 
 	db := pg.Connect(opt)
-
-	if viper.GetBool("DB_LOG_QUERIES") {
-		queryHook := postgres.NewQueryHook(logger)
-		db.AddQueryHook(queryHook)
-		logger.Info("SQL query logging enabled")
-	}
 
 	ctx := context.Background()
 	if err := db.Ping(ctx); err != nil {
@@ -69,7 +63,7 @@ func ProvideLogger() *slog.Logger {
 	)
 }
 
-func ProvideUseCase(repo *postgres.Repository, logger *slog.Logger) *newsportal.Manager {
+func ProvideNewsPortal(repo *postgres.Repository, logger *slog.Logger) *newsportal.Manager {
 	return newsportal.NewNewsUseCase(repo, logger)
 }
 
@@ -77,6 +71,6 @@ func ProvideHandler(uc *newsportal.Manager, logger *slog.Logger) *rest.NewsHandl
 	return rest.NewNewsHandler(uc, logger)
 }
 
-func ProvideEngine(handler *rest.NewsHandler) http.Handler {
+func ProvideEngine(handler *rest.NewsHandler) *echo.Echo {
 	return handler.RegisterRoutes()
 }

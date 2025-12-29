@@ -1,77 +1,63 @@
 package rest
 
 import (
-	"encoding/json"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 const (
-	// API paths
-	apiV1Prefix = "/api/v1"
-
-	allNewsPath    = apiV1Prefix + "/all_news"
-	countPath      = apiV1Prefix + "/count"
-	newsByIDPath   = apiV1Prefix + "/news/{id}"
-	categoriesPath = apiV1Prefix + "/categories"
-	tagsPath       = apiV1Prefix + "/tags"
-
-	// Health check paths
-	staticPathPrefix = "/static/"
-	healthPath       = "/health"
-
 	// Frontend paths
-	frontendDir     = "./frontend"
-	indexHTML       = "index.html"
-	contentTypeJSON = "application/json"
+	frontendDir = "./frontend"
+	indexHTML   = "index.html"
 )
 
-type responseWriter struct {
-	http.ResponseWriter
-	statusCode int
+func (h *NewsHandler) RegisterRoutes() *echo.Echo {
+	e := echo.New()
+
+	// Middleware
+	e.Use(h.loggingMiddleware)
+	e.Use(middleware.Recover())
+
+	// API routes
+	h.registerAPIRoutes(e)
+
+	// Health check
+	h.registerHealthCheck(e)
+
+	// Frontend routes
+	h.registerStaticRoutes(e)
+
+	return e
 }
 
-// RegisterRoutes registers all routes for the handler
-func (h *NewsHandler) RegisterRoutes() http.Handler {
-	mux := http.NewServeMux()
-
-	h.registerAPIRoutes(mux)
-
-	h.registerHealthCheck(mux)
-
-	h.registerStaticRoutes(mux)
-
-	return h.loggingMiddleware(mux)
+func (h *NewsHandler) registerAPIRoutes(e *echo.Echo) {
+	e.GET("/api/v1/all_news", h.GetAllNews)
+	e.GET("/api/v1/count", h.GetNewsCount)
+	e.GET("/api/v1/news/:id", h.GetNewsByID)
+	e.GET("/api/v1/categories", h.GetAllCategories)
+	e.GET("/api/v1/tags", h.GetAllTags)
 }
 
-func (h *NewsHandler) registerAPIRoutes(mux *http.ServeMux) {
-	mux.HandleFunc(allNewsPath, h.requireMethod(http.MethodGet, h.GetAllNews))
-	mux.HandleFunc(countPath, h.requireMethod(http.MethodGet, h.GetNewsCount))
-	mux.HandleFunc(newsByIDPath, h.requireMethod(http.MethodGet, h.GetNewsByID))
-	mux.HandleFunc(categoriesPath, h.requireMethod(http.MethodGet, h.GetAllCategories))
-	mux.HandleFunc(tagsPath, h.requireMethod(http.MethodGet, h.GetAllTags))
+func (h *NewsHandler) registerHealthCheck(e *echo.Echo) {
+	e.GET("/health", h.handleHealth)
 }
 
-func (h *NewsHandler) registerHealthCheck(mux *http.ServeMux) {
-	mux.HandleFunc(healthPath, h.requireMethod(http.MethodGet, h.handleHealth))
+func (h *NewsHandler) registerStaticRoutes(e *echo.Echo) {
+	e.Static("/static", frontendDir)
+	e.GET("/*", h.handleFrontend)
 }
 
-func (h *NewsHandler) registerStaticRoutes(mux *http.ServeMux) {
-	staticFS := http.Dir(frontendDir)
-	fileServer := http.FileServer(staticFS)
-	mux.Handle(staticPathPrefix, http.StripPrefix(staticPathPrefix, fileServer))
-	mux.HandleFunc("/", h.handleFrontend)
-}
-
-func (h *NewsHandler) handleFrontend(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
+func (h *NewsHandler) handleFrontend(c echo.Context) error {
+	if c.Request().Method != http.MethodGet {
+		return echo.ErrMethodNotAllowed
 	}
 
-	p := r.URL.Path
+	p := c.Request().URL.Path
 	if p == "/" || p == "/index.html" {
 		p = indexHTML
 	}
@@ -79,63 +65,33 @@ func (h *NewsHandler) handleFrontend(w http.ResponseWriter, r *http.Request) {
 	p = strings.TrimPrefix(p, "/")
 	filePath := filepath.Join(frontendDir, p)
 
-	http.ServeFile(w, r, filePath)
+	return c.File(filePath)
 }
 
-func (h *NewsHandler) handleHealth(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", contentTypeJSON)
-	if err := json.NewEncoder(w).Encode(
-		map[string]string{"status": "ok"},
-	); err != nil {
-		h.log.Error("failed to encode health response", "error", err)
-	}
+func (h *NewsHandler) handleHealth(c echo.Context) error {
+	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// helpers TODO: move to separate file
-
-func (h *NewsHandler) requireMethod(method string, handler http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != method {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		handler(w, r)
-	}
-}
-
-func (h *NewsHandler) loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func (h *NewsHandler) loggingMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		start := time.Now()
 
-		rw := &responseWriter{ResponseWriter: w}
-
-		next.ServeHTTP(rw, r)
+		err := next(c)
 
 		duration := time.Since(start)
-		status := rw.statusCode
+		status := c.Response().Status
 		if status == 0 {
 			status = http.StatusOK
 		}
 
 		h.log.Info("HTTP request",
-			"method", r.Method,
-			"path", r.URL.Path,
+			"method", c.Request().Method,
+			"path", c.Request().URL.Path,
 			"status", status,
 			"duration_ms", duration.Milliseconds(),
-			"remote_addr", r.RemoteAddr,
+			"remote_addr", c.Request().RemoteAddr,
 		)
-	})
-}
 
-func (rw *responseWriter) WriteHeader(code int) {
-	rw.statusCode = code
-	rw.ResponseWriter.WriteHeader(code)
-}
-
-func (rw *responseWriter) Write(b []byte) (int, error) {
-	if rw.statusCode == 0 {
-		rw.statusCode = http.StatusOK
+		return err
 	}
-	return rw.ResponseWriter.Write(b)
 }

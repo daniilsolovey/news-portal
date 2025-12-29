@@ -35,6 +35,7 @@ func (r *Repository) Ping(ctx context.Context) error {
 			r.log.Error("database ping failed", "error", err)
 			return err
 		}
+
 		r.log.Info("database ping successful")
 		return nil
 	}
@@ -49,6 +50,7 @@ func (r *Repository) Close() error {
 			r.log.Error("error closing database connection", "error", err)
 			return err
 		}
+		
 		r.log.Info("database connection pool closed")
 		return nil
 	}

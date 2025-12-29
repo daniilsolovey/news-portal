@@ -1,13 +1,13 @@
 package rest
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/daniilsolovey/news-portal/internal/newsportal"
+	"github.com/labstack/echo/v4"
 )
 
 const (
@@ -42,42 +42,47 @@ func NewNewsHandler(uc *newsportal.Manager, log *slog.Logger) *NewsHandler {
 // @Success 200 {array} rest.NewsSummary
 // @Failure 400,500 {object} map[string]string
 // @Router /api/v1/all_news [get]
-func (h *NewsHandler) GetAllNews(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-
-	tagID, err := parseOptionalInt(q.Get("tagId"))
+func (h *NewsHandler) GetAllNews(c echo.Context) error {
+	tagID, err := parseOptionalInt(c.QueryParam("tagId"))
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid tagId")
-		return
+		return c.JSON(
+			http.StatusBadRequest,
+			map[string]string{"error": "invalid tagId"},
+		)
 	}
 
-	categoryID, err := parseOptionalInt(q.Get("categoryId"))
+	categoryID, err := parseOptionalInt(c.QueryParam("categoryId"))
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid categoryId")
-		return
+		return c.JSON(
+			http.StatusBadRequest,
+			map[string]string{"error": "invalid categoryId"},
+		)
 	}
 
-	page, err := parsePositiveIntOrDefault(q.Get("page"), defaultPage)
+	page, err := parsePositiveIntOrDefault(c.QueryParam("page"), defaultPage)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid page")
-		return
+		return c.JSON(http.StatusBadRequest,
+			map[string]string{"error": "invalid page"},
+		)
 	}
 
-	pageSize, err := parsePositiveIntOrDefault(q.Get("pageSize"), defaultPageSize)
+	pageSize, err := parsePositiveIntOrDefault(c.QueryParam("pageSize"), defaultPageSize)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid pageSize")
-		return
+		return c.JSON(http.StatusBadRequest,
+			map[string]string{"error": "invalid pageSize"},
+		)
 	}
 
 	if pageSize > maxPageSize {
 		pageSize = maxPageSize
 	}
 
-	newsportalSummaries, err := h.uc.GetAllNews(r.Context(), tagID, categoryID, page, pageSize)
+	newsportalSummaries, err := h.uc.GetAllNews(c.Request().Context(), tagID,
+		categoryID, page, pageSize,
+	)
 	if err != nil {
 		h.log.Error("failed to get all news", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal error")
-		return
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})
 	}
 
 	summaries := make([]News, len(newsportalSummaries))
@@ -85,9 +90,7 @@ func (h *NewsHandler) GetAllNews(w http.ResponseWriter, r *http.Request) {
 		summaries[i] = NewNewsSummary(newsportalSummaries[i])
 	}
 
-	if err := writeJSON(w, http.StatusOK, summaries); err != nil {
-		h.log.Warn("failed to write json response", "error", err)
-	}
+	return c.JSON(http.StatusOK, summaries)
 }
 
 // GetNewsCount handles GET /api/v1/count
@@ -100,31 +103,30 @@ func (h *NewsHandler) GetAllNews(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {integer} int
 // @Failure 400,500 {object} map[string]string
 // @Router /api/v1/count [get]
-func (h *NewsHandler) GetNewsCount(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-
-	tagID, err := parseOptionalInt(q.Get("tagId"))
+func (h *NewsHandler) GetNewsCount(c echo.Context) error {
+	tagID, err := parseOptionalInt(c.QueryParam("tagId"))
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid tagId")
-		return
+		return c.JSON(http.StatusBadRequest,
+			map[string]string{"error": "invalid tagId"},
+		)
 	}
 
-	categoryID, err := parseOptionalInt(q.Get("categoryId"))
+	categoryID, err := parseOptionalInt(c.QueryParam("categoryId"))
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid categoryId")
-		return
+		return c.JSON(http.StatusBadRequest,
+			map[string]string{"error": "invalid categoryId"},
+		)
 	}
 
-	count, err := h.uc.GetNewsCount(r.Context(), tagID, categoryID)
+	count, err := h.uc.GetNewsCount(c.Request().Context(), tagID, categoryID)
 	if err != nil {
 		h.log.Error("failed to get news count", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal error")
-		return
+		return c.JSON(http.StatusInternalServerError,
+			map[string]string{"error": "internal error"},
+		)
 	}
 
-	if err := writeJSON(w, http.StatusOK, count); err != nil {
-		h.log.Warn("failed to write json response", "error", err)
-	}
+	return c.JSON(http.StatusOK, count)
 }
 
 // GetNewsByID handles GET /api/v1/news/:id
@@ -136,34 +138,32 @@ func (h *NewsHandler) GetNewsCount(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} rest.News
 // @Failure 400,404,500 {object} map[string]string
 // @Router /api/v1/news/{id} [get]
-func (h *NewsHandler) GetNewsByID(w http.ResponseWriter, r *http.Request) {
-	// Extract ID from path /api/v1/news/{id}
-	idStr := r.PathValue("id")
+func (h *NewsHandler) GetNewsByID(c echo.Context) error {
+	idStr := c.Param("id")
 	if idStr == "" {
-		writeJSONError(w, http.StatusBadRequest, "invalid id")
-		return
+		return c.JSON(http.StatusBadRequest,
+			map[string]string{"error": "invalid id"},
+		)
 	}
 
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid id")
-		return
+		return c.JSON(http.StatusBadRequest,
+			map[string]string{"error": "invalid id"},
+		)
 	}
 
-	newsportalNews, err := h.uc.GetNewsByID(r.Context(), id)
+	newsportalNews, err := h.uc.GetNewsByID(c.Request().Context(), id)
 	if err != nil {
 		h.log.Error("failed to get news by ID", "error", err, "id", id)
-		// TODO:Check if not found record error
-		writeJSONError(w, http.StatusInternalServerError, "internal error")
-		return
+		return c.JSON(http.StatusInternalServerError,
+			map[string]string{"error": "internal error"},
+		)
 	}
 
-	// Convert newsportal model to rest model
 	news := NewNews(*newsportalNews)
 
-	if err := writeJSON(w, http.StatusOK, news); err != nil {
-		h.log.Warn("failed to write json response", "error", err)
-	}
+	return c.JSON(http.StatusOK, news)
 }
 
 // GetAllCategories handles GET /api/v1/categories
@@ -174,23 +174,21 @@ func (h *NewsHandler) GetNewsByID(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {array} rest.Category
 // @Failure 500 {object} map[string]string
 // @Router /api/v1/categories [get]
-func (h *NewsHandler) GetAllCategories(w http.ResponseWriter, r *http.Request) {
-	newsportalCategories, err := h.uc.GetAllCategories(r.Context())
+func (h *NewsHandler) GetAllCategories(c echo.Context) error {
+	newsportalCategories, err := h.uc.GetAllCategories(c.Request().Context())
 	if err != nil {
 		h.log.Error("failed to get all categories", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal error")
-		return
+		return c.JSON(http.StatusInternalServerError,
+			map[string]string{"error": "internal error"},
+		)
 	}
 
-	// Convert newsportal models to rest models
 	categories := make([]Category, len(newsportalCategories))
 	for i := range newsportalCategories {
 		categories[i] = NewCategory(newsportalCategories[i])
 	}
 
-	if err := writeJSON(w, http.StatusOK, categories); err != nil {
-		h.log.Warn("failed to write json response", "error", err)
-	}
+	return c.JSON(http.StatusOK, categories)
 }
 
 // GetAllTags handles GET /api/v1/tags
@@ -201,26 +199,22 @@ func (h *NewsHandler) GetAllCategories(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {array} rest.Tag
 // @Failure 500 {object} map[string]string
 // @Router /api/v1/tags [get]
-func (h *NewsHandler) GetAllTags(w http.ResponseWriter, r *http.Request) {
-	newsportalTags, err := h.uc.GetAllTags(r.Context())
+func (h *NewsHandler) GetAllTags(c echo.Context) error {
+	newsportalTags, err := h.uc.GetAllTags(c.Request().Context())
 	if err != nil {
 		h.log.Error("failed to get all tags", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal error")
-		return
+		return c.JSON(http.StatusInternalServerError,
+			map[string]string{"error": "internal error"},
+		)
 	}
 
-	// Convert newsportal models to rest models
 	tags := make([]Tag, len(newsportalTags))
 	for i := range newsportalTags {
 		tags[i] = NewTag(newsportalTags[i])
 	}
 
-	if err := writeJSON(w, http.StatusOK, tags); err != nil {
-		h.log.Warn("failed to write json response", "error", err)
-	}
+	return c.JSON(http.StatusOK, tags)
 }
-
-// helpers TODO: move to separate file
 
 func parseOptionalInt(s string) (*int, error) {
 	if s == "" {
@@ -244,22 +238,4 @@ func parsePositiveIntOrDefault(s string, def int) (int, error) {
 		return 0, fmt.Errorf("must be positive int")
 	}
 	return v, nil
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) error {
-	data, err := json.Marshal(v)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return err
-	}
-
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-
-	_, err = w.Write(data)
-	return err
-}
-
-func writeJSONError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
 }

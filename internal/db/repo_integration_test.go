@@ -614,21 +614,16 @@ func TestGetTagsByIDs_Integration(t *testing.T) {
 		for i := range news {
 			item := news[i]
 
-			// GetAllNews in db layer should return TagIds but not load Tags
-			// Tags should be empty as they are loaded in newsportal layer
 			if len(item.TagIds) > 0 {
-				// If TagIds exist, Tags should be empty (not loaded in db layer)
 				if len(item.Tags) != 0 {
 					t.Fatalf("news %d has TagIds but Tags should be empty in db layer (Tags are loaded in newsportal layer)", item.NewsID)
 				}
 			} else {
-				// If no TagIds, Tags should also be empty
 				if len(item.Tags) != 0 {
 					t.Fatalf("news %d has no TagIds but has Tags", item.NewsID)
 				}
 			}
 
-			// Verify that TagIds are valid (non-negative)
 			for _, tagID := range item.TagIds {
 				if tagID <= 0 {
 					t.Fatalf("news %d has invalid TagID: %d", item.NewsID, tagID)
