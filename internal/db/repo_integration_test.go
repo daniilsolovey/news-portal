@@ -1,4 +1,4 @@
-package postgres
+package db
 
 import (
 	"context"
@@ -121,10 +121,10 @@ func TestGetAllNews_Integration(t *testing.T) {
 					if item.CategoryID != wantCategoryID {
 						t.Errorf("expected categoryID %d, got %d", wantCategoryID, item.CategoryID)
 					}
-					if item.Category == nil || item.Category.CategoryID != wantCategoryID {
+					if item.Category == nil || item.Category.ID != wantCategoryID {
 						got := 0
 						if item.Category != nil {
-							got = item.Category.CategoryID
+							got = item.Category.ID
 						}
 						t.Errorf("expected category loaded with id %d, got %d", wantCategoryID, got)
 					}
@@ -140,8 +140,8 @@ func TestGetAllNews_Integration(t *testing.T) {
 				t.Helper()
 				wantTagID := int32(1)
 				for _, item := range news {
-					if !hasTagID(item.TagIds, wantTagID) {
-						t.Errorf("news %d (%s) does not have tag %d in TagIds", item.NewsID, item.Title, wantTagID)
+					if !hasTagID(item.TagIDs, wantTagID) {
+						t.Errorf("news %d (%s) does not have tag %d in TagIDs", item.ID, item.Title, wantTagID)
 					}
 				}
 			},
@@ -159,8 +159,8 @@ func TestGetAllNews_Integration(t *testing.T) {
 					if item.CategoryID != wantCategoryID {
 						t.Errorf("expected categoryID %d, got %d", wantCategoryID, item.CategoryID)
 					}
-					if !hasTagID(item.TagIds, wantTagID) {
-						t.Errorf("news %d (%s) does not have tag %d in TagIds", item.NewsID, item.Title, wantTagID)
+					if !hasTagID(item.TagIDs, wantTagID) {
+						t.Errorf("news %d (%s) does not have tag %d in TagIDs", item.ID, item.Title, wantTagID)
 					}
 				}
 			},
@@ -201,11 +201,11 @@ func TestGetAllNews_Integration(t *testing.T) {
 
 		seen := make(map[int]struct{}, 6)
 		for _, n := range page1 {
-			seen[n.NewsID] = struct{}{}
+			seen[n.ID] = struct{}{}
 		}
 		for _, n := range page2 {
-			if _, ok := seen[n.NewsID]; ok {
-				t.Fatalf("news %d appears on both pages", n.NewsID)
+			if _, ok := seen[n.ID]; ok {
+				t.Fatalf("news %d appears on both pages", n.ID)
 			}
 		}
 	})
@@ -240,13 +240,14 @@ func TestGetAllNews_Integration(t *testing.T) {
 			t.Fatalf("insert unpublished category: %v", err)
 		}
 
+		contentUnpubCat := "This news is in an unpublished category"
 		newsInUnpublishedCategory := News{
-			CategoryID:  unpublishedCategory.CategoryID,
+			CategoryID:  unpublishedCategory.ID,
 			Title:       "News in Unpublished Category",
-			Content:     "This news is in an unpublished category",
+			Content:     &contentUnpubCat,
 			Author:      "Test Author",
 			PublishedAt: baseTime.Add(-24 * time.Hour),
-			TagIds:      []int32{1},
+			TagIDs:      []int{1},
 			StatusID:    statusPublished,
 		}
 		if _, err := tx.ModelContext(ctx, &newsInUnpublishedCategory).Insert(); err != nil {
@@ -259,23 +260,24 @@ func TestGetAllNews_Integration(t *testing.T) {
 		}
 
 		for _, item := range allNews {
-			if item.NewsID == newsInUnpublishedCategory.NewsID {
-				t.Fatalf("news %d should not be returned (unpublished category)", item.NewsID)
+			if item.ID == newsInUnpublishedCategory.ID {
+				t.Fatalf("news %d should not be returned (unpublished category)", item.ID)
 			}
 			if item.Category != nil && item.Category.StatusID != statusPublished {
-				t.Fatalf("returned news %d has category status=%d, want %d", item.NewsID, item.Category.StatusID, statusPublished)
+				t.Fatalf("returned news %d has category status=%d, want %d", item.ID, item.Category.StatusID, statusPublished)
 			}
 		}
 	})
 
 	t.Run("ExcludesNewsWithUnpublishedStatus", func(t *testing.T) {
+		contentUnpub := "This news is not published"
 		unpublishedNews := News{
 			CategoryID:  1,
 			Title:       "Unpublished News",
-			Content:     "This news is not published",
+			Content:     &contentUnpub,
 			Author:      "Test Author",
 			PublishedAt: baseTime.Add(-24 * time.Hour),
-			TagIds:      []int32{1},
+			TagIDs:      []int{1},
 			StatusID:    2,
 		}
 		if _, err := tx.ModelContext(ctx, &unpublishedNews).Insert(); err != nil {
@@ -288,11 +290,11 @@ func TestGetAllNews_Integration(t *testing.T) {
 		}
 
 		for _, item := range allNews {
-			if item.NewsID == unpublishedNews.NewsID {
-				t.Fatalf("news %d should not be returned (unpublished status)", item.NewsID)
+			if item.ID == unpublishedNews.ID {
+				t.Fatalf("news %d should not be returned (unpublished status)", item.ID)
 			}
 			if item.StatusID != statusPublished {
-				t.Fatalf("returned news %d has status=%d, want %d", item.NewsID, item.StatusID, statusPublished)
+				t.Fatalf("returned news %d has status=%d, want %d", item.ID, item.StatusID, statusPublished)
 			}
 		}
 	})
@@ -310,7 +312,7 @@ func TestGetAllNews_Integration(t *testing.T) {
 		for _, item := range allNews {
 			if item.StatusID != statusPublished {
 				t.Fatalf("returned news %d (title: %q) has status=%d, want %d (published)",
-					item.NewsID, item.Title, item.StatusID, statusPublished)
+					item.ID, item.Title, item.StatusID, statusPublished)
 			}
 		}
 	})
@@ -325,24 +327,25 @@ func TestGetAllNews_Integration(t *testing.T) {
 		}
 
 		for i := range news {
-			if news[i].Category == nil || news[i].Category.CategoryID == 0 {
+			if news[i].Category == nil || news[i].Category.ID == 0 {
 				t.Fatalf("news[%d] category not loaded", i)
 			}
-			if news[i].Category.CategoryID != news[i].CategoryID {
-				t.Fatalf("news[%d] category mismatch: %d != %d", i, news[i].Category.CategoryID, news[i].CategoryID)
+			if news[i].Category.ID != news[i].CategoryID {
+				t.Fatalf("news[%d] category mismatch: %d != %d", i, news[i].Category.ID, news[i].CategoryID)
 			}
 		}
 	})
 
 	t.Run("ExcludesNewsWithFuturePublishedAt", func(t *testing.T) {
 		now := time.Now()
+		content3 := "This news is scheduled for the future"
 		futureNews := News{
 			CategoryID:  1,
 			Title:       "Future News",
-			Content:     "This news is scheduled for the future",
+			Content:     &content3,
 			Author:      "Test Author",
 			PublishedAt: now.Add(24 * time.Hour),
-			TagIds:      []int32{1},
+			TagIDs:      []int{1},
 			StatusID:    statusPublished,
 		}
 		if _, err := tx.ModelContext(ctx, &futureNews).Insert(); err != nil {
@@ -355,12 +358,12 @@ func TestGetAllNews_Integration(t *testing.T) {
 		}
 
 		for _, item := range allNews {
-			if item.NewsID == futureNews.NewsID {
-				t.Fatalf("news %d should not be returned (publishedAt in future)", item.NewsID)
+			if item.ID == futureNews.ID {
+				t.Fatalf("news %d should not be returned (publishedAt in future)", item.ID)
 			}
 			if !item.PublishedAt.Before(now) {
 				t.Fatalf("returned news %d has publishedAt=%v which is not in the past (now=%v)",
-					item.NewsID, item.PublishedAt, now,
+					item.ID, item.PublishedAt, now,
 				)
 			}
 		}
@@ -407,7 +410,7 @@ func TestGetNewsByID_Integration(t *testing.T) {
 			t.Fatalf("no news items available for testing")
 		}
 
-		newsID := allNews[0].NewsID
+		newsID := allNews[0].ID
 		news, err := repo.GetNewsByID(ctx, newsID)
 		if err != nil {
 			t.Fatalf("GetNewsByID: %v", err)
@@ -430,20 +433,21 @@ func TestGetNewsByID_Integration(t *testing.T) {
 	})
 
 	t.Run("WithUnpublishedStatusReturnsError", func(t *testing.T) {
+		contentUnpub2 := "This news is not published"
 		unpublishedNews := News{
 			CategoryID:  1,
 			Title:       "Unpublished News",
-			Content:     "This news is not published",
+			Content:     &contentUnpub2,
 			Author:      "Test Author",
 			PublishedAt: baseTime.Add(-24 * time.Hour),
-			TagIds:      []int32{1},
+			TagIDs:      []int{1},
 			StatusID:    2,
 		}
 		if _, err := tx.ModelContext(ctx, &unpublishedNews).Insert(); err != nil {
 			t.Fatalf("insert unpublished news: %v", err)
 		}
 
-		got, err := repo.GetNewsByID(ctx, unpublishedNews.NewsID)
+		got, err := repo.GetNewsByID(ctx, unpublishedNews.ID)
 		if err == nil {
 			t.Fatalf("expected error for unpublished news, got nil (news=%+v)", got)
 		}
@@ -462,20 +466,21 @@ func TestGetNewsByID_Integration(t *testing.T) {
 			t.Fatalf("insert unpublished category: %v", err)
 		}
 
+		contentUnpubCat2 := "This news is in an unpublished category"
 		newsInUnpublishedCategory := News{
-			CategoryID:  unpublishedCategory.CategoryID,
+			CategoryID:  unpublishedCategory.ID,
 			Title:       "News in Unpublished Category",
-			Content:     "This news is in an unpublished category",
+			Content:     &contentUnpubCat2,
 			Author:      "Test Author",
 			PublishedAt: baseTime.Add(-24 * time.Hour),
-			TagIds:      []int32{1},
+			TagIDs:      []int{1},
 			StatusID:    statusPublished,
 		}
 		if _, err := tx.ModelContext(ctx, &newsInUnpublishedCategory).Insert(); err != nil {
 			t.Fatalf("insert news in unpublished category: %v", err)
 		}
 
-		got, err := repo.GetNewsByID(ctx, newsInUnpublishedCategory.NewsID)
+		got, err := repo.GetNewsByID(ctx, newsInUnpublishedCategory.ID)
 		if err == nil {
 			t.Fatalf("expected error for news with unpublished category, got nil (news=%+v)", got)
 		}
@@ -486,20 +491,21 @@ func TestGetNewsByID_Integration(t *testing.T) {
 
 	t.Run("WithFuturePublishedAtReturnsError", func(t *testing.T) {
 		now := time.Now()
+		content6 := "This news is scheduled for the future"
 		futureNews := News{
 			CategoryID:  1,
 			Title:       "Future News for GetNewsByID",
-			Content:     "This news is scheduled for the future",
+			Content:     &content6,
 			Author:      "Test Author",
 			PublishedAt: now.Add(24 * time.Hour),
-			TagIds:      []int32{1},
+			TagIDs:      []int{1},
 			StatusID:    statusPublished,
 		}
 		if _, err := tx.ModelContext(ctx, &futureNews).Insert(); err != nil {
 			t.Fatalf("insert future news: %v", err)
 		}
 
-		got, err := repo.GetNewsByID(ctx, futureNews.NewsID)
+		got, err := repo.GetNewsByID(ctx, futureNews.ID)
 		if err == nil {
 			t.Fatalf("expected error for news with future publishedAt, got nil (news=%+v)", got)
 		}
@@ -549,7 +555,7 @@ func TestGetAllCategories_Integration(t *testing.T) {
 		}
 
 		for _, cat := range categories {
-			if cat.CategoryID == unpublishedCat.CategoryID {
+			if cat.ID == unpublishedCat.ID {
 				t.Fatalf("unpublished category should not be returned")
 			}
 		}
@@ -592,7 +598,7 @@ func TestGetAllTags_Integration(t *testing.T) {
 		}
 
 		for _, tag := range tags {
-			if tag.TagID == unpublishedTag.TagID {
+			if tag.ID == unpublishedTag.ID {
 				t.Fatalf("unpublished tag should not be returned")
 			}
 		}
@@ -614,19 +620,13 @@ func TestGetTagsByIDs_Integration(t *testing.T) {
 		for i := range news {
 			item := news[i]
 
-			if len(item.TagIds) > 0 {
-				if len(item.Tags) != 0 {
-					t.Fatalf("news %d has TagIds but Tags should be empty in db layer (Tags are loaded in newsportal layer)", item.NewsID)
-				}
-			} else {
-				if len(item.Tags) != 0 {
-					t.Fatalf("news %d has no TagIds but has Tags", item.NewsID)
-				}
+			if len(item.TagIDs) > 0 {
+				// Tags field doesn't exist in db layer, it's loaded in newsportal layer
 			}
 
-			for _, tagID := range item.TagIds {
+			for _, tagID := range item.TagIDs {
 				if tagID <= 0 {
-					t.Fatalf("news %d has invalid TagID: %d", item.NewsID, tagID)
+					t.Fatalf("news %d has invalid TagID: %d", item.ID, tagID)
 				}
 			}
 		}
@@ -641,37 +641,38 @@ func TestGetTagsByIDs_Integration(t *testing.T) {
 			t.Fatalf("insert unpublished tag: %v", err)
 		}
 
-		mixedTagIDs := []int32{1, int32(unpublishedTag.TagID)}
+		mixedTagIDs := []int32{1, int32(unpublishedTag.ID)}
 		tags, err := repo.GetTagsByIDs(ctx, mixedTagIDs)
 		if err != nil {
 			t.Fatalf("GetTagsByIDs: %v", err)
 		}
 
 		for _, tag := range tags {
-			if tag.TagID == unpublishedTag.TagID {
-				t.Fatalf("unpublished tag %d should not be loaded", unpublishedTag.TagID)
+			if tag.ID == unpublishedTag.ID {
+				t.Fatalf("unpublished tag %d should not be loaded", unpublishedTag.ID)
 			}
 		}
 
-		if len(tags) != 1 || tags[0].TagID != 1 {
+		if len(tags) != 1 || tags[0].ID != 1 {
 			t.Fatalf("expected only published tag 1, got %+v", tags)
 		}
 	})
 
 	t.Run("HandlesEmptyTagIds", func(t *testing.T) {
+		content7 := "This news has no tags"
 		newsWithoutTags := News{
 			CategoryID:  1,
 			Title:       "News without Tags",
-			Content:     "This news has no tags",
+			Content:     &content7,
 			Author:      "Test Author",
 			PublishedAt: baseTime.Add(-24 * time.Hour),
-			TagIds:      []int32{},
+			TagIDs:      []int{},
 			StatusID:    statusPublished,
 		}
 		if _, err := tx.ModelContext(ctx, &newsWithoutTags).Insert(); err != nil {
 			t.Fatalf("insert news without tags: %v", err)
 		}
-		if newsWithoutTags.NewsID == 0 {
+		if newsWithoutTags.ID == 0 {
 			t.Fatalf("NewsID was not set after insert")
 		}
 
@@ -685,23 +686,28 @@ func TestGetTagsByIDs_Integration(t *testing.T) {
 	})
 
 	t.Run("HandlesNonExistentTagIds", func(t *testing.T) {
+		content8 := "This news references tags that don't exist"
 		newsWithNonExistentTags := News{
 			CategoryID:  1,
 			Title:       "News with Non-Existent Tags",
-			Content:     "This news references tags that don't exist",
+			Content:     &content8,
 			Author:      "Test Author",
 			PublishedAt: baseTime.Add(-24 * time.Hour),
-			TagIds:      []int32{99999, 99998},
+			TagIDs:      []int{99999, 99998},
 			StatusID:    statusPublished,
 		}
 		if _, err := tx.ModelContext(ctx, &newsWithNonExistentTags).Insert(); err != nil {
 			t.Fatalf("insert news with non-existent tags: %v", err)
 		}
-		if newsWithNonExistentTags.NewsID == 0 {
+		if newsWithNonExistentTags.ID == 0 {
 			t.Fatalf("NewsID was not set after insert")
 		}
 
-		got, err := repo.GetTagsByIDs(ctx, newsWithNonExistentTags.TagIds)
+		tagIDs := make([]int32, len(newsWithNonExistentTags.TagIDs))
+		for i, id := range newsWithNonExistentTags.TagIDs {
+			tagIDs[i] = int32(id)
+		}
+		got, err := repo.GetTagsByIDs(ctx, tagIDs)
 		if err != nil {
 			t.Fatalf("GetTagsByIDs non-existent: %v", err)
 		}
@@ -713,9 +719,9 @@ func TestGetTagsByIDs_Integration(t *testing.T) {
 
 func intPtr(i int) *int { return &i }
 
-func hasTagID(tagIds []int32, id int32) bool {
-	for _, tagID := range tagIds {
-		if tagID == id {
+func hasTagID(tagIDs []int, id int32) bool {
+	for _, tagID := range tagIDs {
+		if int32(tagID) == id {
 			return true
 		}
 	}
@@ -725,7 +731,7 @@ func hasTagID(tagIds []int32, id int32) bool {
 func assertNewsRowBasic(t *testing.T, item *News) {
 	t.Helper()
 
-	if item.NewsID == 0 {
+	if item.ID == 0 {
 		t.Fatalf("invalid NewsID")
 	}
 	if item.Title == "" {
@@ -734,7 +740,7 @@ func assertNewsRowBasic(t *testing.T, item *News) {
 	if item.CategoryID == 0 {
 		t.Fatalf("invalid CategoryID")
 	}
-	if item.Category == nil || item.Category.CategoryID == 0 {
+	if item.Category == nil || item.Category.ID == 0 {
 		t.Fatalf("category not loaded")
 	}
 	if item.PublishedAt.After(baseTime.Add(365 * 24 * time.Hour)) {
@@ -747,13 +753,13 @@ func assertNewsValid(t *testing.T, news *News, newsID int) {
 	if news == nil {
 		t.Fatalf("news is nil")
 	}
-	if news.NewsID != newsID {
-		t.Fatalf("expected NewsID %d, got %d", newsID, news.NewsID)
+	if news.ID != newsID {
+		t.Fatalf("expected NewsID %d, got %d", newsID, news.ID)
 	}
 	if news.Title == "" {
 		t.Fatalf("empty Title")
 	}
-	if news.Content == "" {
+	if news.Content == nil {
 		t.Fatalf("empty Content")
 	}
 	if news.Author == "" {
@@ -762,17 +768,18 @@ func assertNewsValid(t *testing.T, news *News, newsID int) {
 	if news.CategoryID == 0 {
 		t.Fatalf("invalid CategoryID")
 	}
-	if news.Category == nil || news.Category.CategoryID == 0 {
+	if news.Category == nil || news.Category.ID == 0 {
 		t.Fatalf("category not loaded")
 	}
-	if len(news.TagIds) > 0 && len(news.Tags) != 0 {
-		t.Fatalf("Tags should be empty in db layer (Tags are loaded in newsportal layer)")
+	// Tags field doesn't exist in db layer, it's loaded in newsportal layer
+	if len(news.TagIDs) > 0 {
+		// TagIDs are present, but Tags field is not in db layer
 	}
 }
 
 func assertCategoryValid(t *testing.T, category Category) {
 	t.Helper()
-	if category.CategoryID == 0 {
+	if category.ID == 0 {
 		t.Fatalf("invalid CategoryID")
 	}
 	if category.Title == "" {
@@ -785,7 +792,7 @@ func assertCategoryValid(t *testing.T, category Category) {
 
 func assertTagValid(t *testing.T, tag Tag) {
 	t.Helper()
-	if tag.TagID == 0 {
+	if tag.ID == 0 {
 		t.Fatalf("invalid TagID")
 	}
 	if tag.Title == "" {

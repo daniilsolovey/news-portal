@@ -7,9 +7,10 @@
 package wire
 
 import (
+	"log/slog"
+
 	"github.com/daniilsolovey/news-portal/internal/db"
 	"github.com/labstack/echo/v4"
-	"log/slog"
 )
 
 // Injectors from wire.go:
@@ -36,7 +37,7 @@ func Initialize() (*Service, func(), error) {
 // wire.go:
 
 type Service struct {
-	Postgres *postgres.Repository
+	Postgres *db.Repository
 	Logger   *slog.Logger
 	Engine   *echo.Echo
 }

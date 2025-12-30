@@ -1,4 +1,4 @@
-package postgres
+package db
 
 import (
 	"context"
@@ -50,7 +50,7 @@ func (r *Repository) Close() error {
 			r.log.Error("error closing database connection", "error", err)
 			return err
 		}
-		
+
 		r.log.Info("database connection pool closed")
 		return nil
 	}
@@ -86,20 +86,20 @@ func (r *Repository) GetAllNews(ctx context.Context, tagID, categoryID *int,
 	var news []News
 	query := r.db.ModelContext(ctx, &news).
 		Relation("Category").
-		Where(`"news"."statusId" = ?`, StatusPublished).
+		Where(`"t"."statusId" = ?`, StatusPublished).
 		Where(`"category"."statusId" = ?`, StatusPublished).
-		Where(`"news"."publishedAt" < ?`, now)
+		Where(`"t"."publishedAt" < ?`, now)
 
 	if categoryID != nil {
-		query = query.Where(`"news"."categoryId" = ?`, *categoryID)
+		query = query.Where(`"t"."categoryId" = ?`, *categoryID)
 	}
 
 	if tagID != nil {
-		query = query.Where(`? = ANY("news"."tagIds")`, *tagID)
+		query = query.Where(`? = ANY("t"."tagIds")`, *tagID)
 	}
 
 	err := query.
-		OrderExpr(`"news"."publishedAt" DESC`).
+		OrderExpr(`"t"."publishedAt" DESC`).
 		Limit(pageSize).
 		Offset(offset).
 		Select()
@@ -131,11 +131,11 @@ func (r *Repository) GetNewsCount(ctx context.Context, tagID, categoryID *int) (
 	query := r.db.ModelContext(ctx, (*News)(nil))
 
 	if categoryID != nil {
-		query = query.Where(`"categoryId" = ?`, *categoryID)
+		query = query.Where(`"t"."categoryId" = ?`, *categoryID)
 	}
 
 	if tagID != nil {
-		query = query.Where(`? = ANY("tagIds")`, *tagID)
+		query = query.Where(`? = ANY("t"."tagIds")`, *tagID)
 	}
 
 	count, err := query.Count()
@@ -161,10 +161,10 @@ func (r *Repository) GetNewsByID(ctx context.Context, newsID int) (*News, error)
 	news := &News{}
 	err := r.db.ModelContext(ctx, news).
 		Relation("Category").
-		Where(`"news"."statusId" = ?`, StatusPublished).
+		Where(`"t"."statusId" = ?`, StatusPublished).
 		Where(`"category"."statusId" = ?`, StatusPublished).
-		Where(`"news"."publishedAt" < ?`, now).
-		Where(`"news"."newsId" = ?`, newsID).
+		Where(`"t"."publishedAt" < ?`, now).
+		Where(`"t"."newsId" = ?`, newsID).
 		Select()
 
 	if err != nil {

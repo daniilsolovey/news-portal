@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"log/slog"
 
-	postgres "github.com/daniilsolovey/news-portal/internal/db"
+	db "github.com/daniilsolovey/news-portal/internal/db"
 )
 
 type Manager struct {
-	db  *postgres.Repository
+	db  *db.Repository
 	log *slog.Logger
 }
 
-func NewNewsUseCase(repo *postgres.Repository, log *slog.Logger) *Manager {
+func NewNewsUseCase(repo *db.Repository, log *slog.Logger) *Manager {
 	return &Manager{
 		db:  repo,
 		log: log,
@@ -68,7 +68,7 @@ func (u *Manager) GetNewsByID(ctx context.Context, newsID int) (*News, error) {
 		return nil, err
 	}
 
-	dbNewsWithTags, err := u.attachTagsBatch(ctx, []postgres.News{*dbNews})
+	dbNewsWithTags, err := u.attachTagsBatch(ctx, []db.News{*dbNews})
 	if err != nil {
 		u.log.Error("failed to attach tags to news", "error", err)
 		return nil, fmt.Errorf("failed to attach tags to news: %w", err)

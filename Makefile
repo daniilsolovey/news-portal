@@ -69,3 +69,7 @@ test-db-restart: test-db-down test-db-up
 
 swag:
 	swag init --generalInfo cmd/app/main.go --output docs
+
+
+genna:
+	genna model -c "postgres://user:password@localhost:5432/news_portal?sslmode=disable" -o internal/db/model.go -t "public.*" -f

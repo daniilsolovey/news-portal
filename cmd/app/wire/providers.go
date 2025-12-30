@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	postgres "github.com/daniilsolovey/news-portal/internal/db"
+	db "github.com/daniilsolovey/news-portal/internal/db"
 	"github.com/daniilsolovey/news-portal/internal/newsportal"
 	"github.com/daniilsolovey/news-portal/internal/rest"
 	"github.com/go-pg/pg/v10"
@@ -14,7 +14,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func ProvideDB(logger *slog.Logger) (*postgres.Repository, func(), error) {
+func ProvideDB(logger *slog.Logger) (*db.Repository, func(), error) {
 	url := viper.GetString("DATABASE_URL")
 
 	opt, err := pg.ParseURL(url)
@@ -36,16 +36,16 @@ func ProvideDB(logger *slog.Logger) (*postgres.Repository, func(), error) {
 		opt.MaxConnAge = lifetime
 	}
 
-	db := pg.Connect(opt)
+	dbConnect := pg.Connect(opt)
 
 	ctx := context.Background()
-	if err := db.Ping(ctx); err != nil {
+	if err := dbConnect.Ping(ctx); err != nil {
 		logger.Error("failed to ping database", "error", err)
-		db.Close()
+		dbConnect.Close()
 		return nil, nil, err
 	}
 
-	repo := postgres.New(db, logger)
+	repo := db.New(dbConnect, logger)
 	cleanup := func() {
 		if err := repo.Close(); err != nil {
 			logger.Error("error closing database connection", "error", err)
@@ -63,7 +63,7 @@ func ProvideLogger() *slog.Logger {
 	)
 }
 
-func ProvideNewsPortal(repo *postgres.Repository, logger *slog.Logger) *newsportal.Manager {
+func ProvideNewsPortal(repo *db.Repository, logger *slog.Logger) *newsportal.Manager {
 	return newsportal.NewNewsUseCase(repo, logger)
 }
 
