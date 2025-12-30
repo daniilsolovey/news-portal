@@ -44,7 +44,7 @@ test:
 
 # Run integration tests (requires test database to be running)
 test-integration:
-	go test -v ./internal/repository/postgres/...
+	go test -v ./internal/db/...
 
 # Test Database (PostgreSQL)
 .PHONY: test-db-up test-db-down test-db-remove test-db-restart

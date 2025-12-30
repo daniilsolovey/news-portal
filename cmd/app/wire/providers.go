@@ -3,19 +3,18 @@ package wire
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"os"
 	"time"
 
-	"github.com/daniilsolovey/news-portal/internal/delivery"
-	"github.com/daniilsolovey/news-portal/internal/repository"
-	"github.com/daniilsolovey/news-portal/internal/repository/postgres"
-	"github.com/daniilsolovey/news-portal/internal/usecase"
+	postgres "github.com/daniilsolovey/news-portal/internal/db"
+	"github.com/daniilsolovey/news-portal/internal/newsportal"
+	"github.com/daniilsolovey/news-portal/internal/rest"
 	"github.com/go-pg/pg/v10"
+	"github.com/labstack/echo/v4"
 	"github.com/spf13/viper"
 )
 
-func ProvidePostgres(logger *slog.Logger) (*postgres.Repository, func(), error) {
+func ProvideDB(logger *slog.Logger) (*postgres.Repository, func(), error) {
 	url := viper.GetString("DATABASE_URL")
 
 	opt, err := pg.ParseURL(url)
@@ -39,14 +38,6 @@ func ProvidePostgres(logger *slog.Logger) (*postgres.Repository, func(), error) 
 
 	db := pg.Connect(opt)
 
-	// Add query hook for SQL logging if enabled
-	if viper.GetBool("DB_LOG_QUERIES") {
-		queryHook := postgres.NewQueryHook(logger)
-		db.AddQueryHook(queryHook)
-		logger.Info("SQL query logging enabled")
-	}
-
-	// Test connection
 	ctx := context.Background()
 	if err := db.Ping(ctx); err != nil {
 		logger.Error("failed to ping database", "error", err)
@@ -72,18 +63,14 @@ func ProvideLogger() *slog.Logger {
 	)
 }
 
-func ProvideRepository(pg *postgres.Repository) repository.IRepository {
-	return repository.New(pg)
+func ProvideNewsPortal(repo *postgres.Repository, logger *slog.Logger) *newsportal.Manager {
+	return newsportal.NewNewsUseCase(repo, logger)
 }
 
-func ProvideUseCase(repo repository.IRepository, logger *slog.Logger) *usecase.NewsUseCase {
-	return usecase.NewNewsUseCase(repo, logger)
+func ProvideHandler(uc *newsportal.Manager, logger *slog.Logger) *rest.NewsHandler {
+	return rest.NewNewsHandler(uc, logger)
 }
 
-func ProvideHandler(uc *usecase.NewsUseCase, logger *slog.Logger) *delivery.NewsHandler {
-	return delivery.NewNewsHandler(uc, logger)
-}
-
-func ProvideEngine(handler *delivery.NewsHandler) http.Handler {
+func ProvideEngine(handler *rest.NewsHandler) *echo.Echo {
 	return handler.RegisterRoutes()
 }

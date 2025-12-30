@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/go-pg/pg/v10"
@@ -14,6 +15,48 @@ const (
 )
 
 var ErrNewsNotFound = errors.New("news not found")
+
+type Repository struct {
+	db  pg.DBI
+	log *slog.Logger
+}
+
+func New(db pg.DBI, logger *slog.Logger) *Repository {
+	return &Repository{
+		db:  db,
+		log: logger,
+	}
+}
+
+func (r *Repository) Ping(ctx context.Context) error {
+	r.log.Info("pinging database")
+	if db, ok := r.db.(*pg.DB); ok {
+		if err := db.Ping(ctx); err != nil {
+			r.log.Error("database ping failed", "error", err)
+			return err
+		}
+
+		r.log.Info("database ping successful")
+		return nil
+	}
+
+	return nil
+}
+
+func (r *Repository) Close() error {
+	if db, ok := r.db.(*pg.DB); ok {
+		r.log.Info("closing database connection pool")
+		if err := db.Close(); err != nil {
+			r.log.Error("error closing database connection", "error", err)
+			return err
+		}
+		
+		r.log.Info("database connection pool closed")
+		return nil
+	}
+
+	return nil
+}
 
 // GetAllNews retrieves news with optional filtering by tagID and categoryID, with pagination
 // Results are sorted by publishedAt DESC and include full category and tags information
@@ -68,24 +111,17 @@ func (r *Repository) GetAllNews(ctx context.Context, tagID, categoryID *int,
 		return nil, fmt.Errorf("failed to query news: %w", err)
 	}
 
-	newsList, err := r.attachTagsBatch(ctx, news)
-	if err != nil {
-		r.log.Error("failed to attach tags to news", "error", err)
-		return nil, fmt.Errorf("failed to attach tags to news: %w", err)
-	}
-
 	r.log.Info("successfully retrieved news",
-		"count", len(newsList),
+		"count", len(news),
 		"tagID", tagID,
 		"categoryID", categoryID,
 		"page", page,
 		"pageSize", pageSize,
 	)
 
-	return newsList, nil
+	return news, nil
 }
 
-// GetNewsCount returns the count of news matching the optional tagID and categoryID filters
 func (r *Repository) GetNewsCount(ctx context.Context, tagID, categoryID *int) (int, error) {
 	r.log.Info("getting news count",
 		"tagID", tagID,
@@ -119,12 +155,11 @@ func (r *Repository) GetNewsCount(ctx context.Context, tagID, categoryID *int) (
 	return count, nil
 }
 
-// GetNewsByID retrieves a single news item by ID with full content, category and tags
 func (r *Repository) GetNewsByID(ctx context.Context, newsID int) (*News, error) {
 	r.log.Info("getting news by ID", "newsID", newsID)
 	now := time.Now()
-	newsEntity := &News{}
-	err := r.db.ModelContext(ctx, newsEntity).
+	news := &News{}
+	err := r.db.ModelContext(ctx, news).
 		Relation("Category").
 		Where(`"news"."statusId" = ?`, StatusPublished).
 		Where(`"category"."statusId" = ?`, StatusPublished).
@@ -142,21 +177,13 @@ func (r *Repository) GetNewsByID(ctx context.Context, newsID int) (*News, error)
 		return nil, fmt.Errorf("failed to get news by id: %w", err)
 	}
 
-	loadTags, err := r.loadTags(ctx, newsEntity.TagIds)
-	if err != nil {
-		r.log.Error("failed to load tags", "error", err)
-		return nil, fmt.Errorf("failed to load tags: %w", err)
-	}
-
-	newsEntity.Tags = loadTags
 	r.log.Info("successfully retrieved news by ID", "newsID", newsID,
-		"title", newsEntity.Title,
+		"title", news.Title,
 	)
 
-	return newsEntity, nil
+	return news, nil
 }
 
-// GetAllCategories retrieves all categories ordered by orderNumber
 func (r *Repository) GetAllCategories(ctx context.Context) ([]Category, error) {
 	r.log.Info("getting all categories")
 
@@ -176,7 +203,6 @@ func (r *Repository) GetAllCategories(ctx context.Context) ([]Category, error) {
 	return category, nil
 }
 
-// GetAllTags retrieves all tags ordered by title
 func (r *Repository) GetAllTags(ctx context.Context) ([]Tag, error) {
 	r.log.Info("getting all tags")
 
@@ -196,8 +222,7 @@ func (r *Repository) GetAllTags(ctx context.Context) ([]Tag, error) {
 	return tags, nil
 }
 
-// getTagsByIDs retrieves tags by their IDs
-func (r *Repository) getTagsByIDs(ctx context.Context, tagIds []int32) ([]Tag, error) {
+func (r *Repository) GetTagsByIDs(ctx context.Context, tagIds []int32) ([]Tag, error) {
 	if len(tagIds) == 0 {
 		return []Tag{}, nil
 	}

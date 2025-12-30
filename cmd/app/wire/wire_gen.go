@@ -7,28 +7,26 @@
 package wire
 
 import (
+	"github.com/daniilsolovey/news-portal/internal/db"
+	"github.com/labstack/echo/v4"
 	"log/slog"
-	"net/http"
-
-	"github.com/daniilsolovey/news-portal/internal/repository/postgres"
 )
 
 // Injectors from wire.go:
 
 func Initialize() (*Service, func(), error) {
 	logger := ProvideLogger()
-	repository, cleanup, err := ProvidePostgres(logger)
+	repository, cleanup, err := ProvideDB(logger)
 	if err != nil {
 		return nil, nil, err
 	}
-	iRepository := ProvideRepository(repository)
-	newsUseCase := ProvideUseCase(iRepository, logger)
-	newsHandler := ProvideHandler(newsUseCase, logger)
-	engine := ProvideEngine(newsHandler)
+	manager := ProvideNewsPortal(repository, logger)
+	newsHandler := ProvideHandler(manager, logger)
+	echo := ProvideEngine(newsHandler)
 	service := &Service{
 		Postgres: repository,
 		Logger:   logger,
-		Engine:   engine,
+		Engine:   echo,
 	}
 	return service, func() {
 		cleanup()
@@ -40,5 +38,5 @@ func Initialize() (*Service, func(), error) {
 type Service struct {
 	Postgres *postgres.Repository
 	Logger   *slog.Logger
-	Engine   http.Handler
+	Engine   *echo.Echo
 }
