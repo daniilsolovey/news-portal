@@ -22,14 +22,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
 	defer cleanup()
 
 	ctx := context.Background()
-
-	if err := service.DB.Ping(ctx); err != nil {
-		service.Logger.Error("PostgreSQL not available", "error", err)
-		os.Exit(1)
-	}
 
 	if err := service.Run(ctx, cfg.Port); err != nil {
 		service.Logger.Error("failed to run server", "error", err)
