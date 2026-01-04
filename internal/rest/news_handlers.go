@@ -77,7 +77,7 @@ func (h *NewsHandler) GetAllNews(c echo.Context) error {
 		pageSize = maxPageSize
 	}
 
-	newsportalSummaries, err := h.uc.GetAllNews(c.Request().Context(), tagID,
+	newsportalSummaries, err := h.uc.NewsByFilter(c.Request().Context(), tagID,
 		categoryID, page, pageSize,
 	)
 	if err != nil {
@@ -118,7 +118,7 @@ func (h *NewsHandler) GetNewsCount(c echo.Context) error {
 		)
 	}
 
-	count, err := h.uc.GetNewsCount(c.Request().Context(), tagID, categoryID)
+	count, err := h.uc.NewsCount(c.Request().Context(), tagID, categoryID)
 	if err != nil {
 		h.log.Error("failed to get news count", "error", err)
 		return c.JSON(http.StatusInternalServerError,
@@ -153,12 +153,12 @@ func (h *NewsHandler) GetNewsByID(c echo.Context) error {
 		)
 	}
 
-	newsportalNews, err := h.uc.GetNewsByID(c.Request().Context(), id)
+	newsportalNews, err := h.uc.NewsByID(c.Request().Context(), id)
 	if err != nil {
 		h.log.Error("failed to get news by ID", "error", err, "id", id)
-		return c.JSON(http.StatusInternalServerError,
-			map[string]string{"error": "internal error"},
-		)
+		return err
+	} else if newsportalNews == nil {
+		return c.String(http.StatusNotFound, "news not found")
 	}
 
 	news := NewNews(*newsportalNews)
@@ -175,7 +175,7 @@ func (h *NewsHandler) GetNewsByID(c echo.Context) error {
 // @Failure 500 {object} map[string]string
 // @Router /api/v1/categories [get]
 func (h *NewsHandler) GetAllCategories(c echo.Context) error {
-	newsportalCategories, err := h.uc.GetAllCategories(c.Request().Context())
+	newsportalCategories, err := h.uc.Categories(c.Request().Context())
 	if err != nil {
 		h.log.Error("failed to get all categories", "error", err)
 		return c.JSON(http.StatusInternalServerError,
@@ -200,7 +200,7 @@ func (h *NewsHandler) GetAllCategories(c echo.Context) error {
 // @Failure 500 {object} map[string]string
 // @Router /api/v1/tags [get]
 func (h *NewsHandler) GetAllTags(c echo.Context) error {
-	newsportalTags, err := h.uc.GetAllTags(c.Request().Context())
+	newsportalTags, err := h.uc.Tags(c.Request().Context())
 	if err != nil {
 		h.log.Error("failed to get all tags", "error", err)
 		return c.JSON(http.StatusInternalServerError,

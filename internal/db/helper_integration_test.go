@@ -29,7 +29,7 @@ func withTx(t *testing.T) (*pg.Tx, context.Context, *Repository) {
 		}
 	})
 
-	repo := New(tx, testLogger)
+	repo := New(tx)
 	return tx, ctx, repo
 }
 

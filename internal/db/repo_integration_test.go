@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"testing"
 	"time"
@@ -13,10 +12,9 @@ import (
 )
 
 var (
-	testDB     *pg.DB
-	testRepo   *Repository
-	testLogger *slog.Logger
-	baseTime   = time.Date(2024, 1, 14, 12, 0, 0, 0, time.UTC)
+	testDB   *pg.DB
+	testRepo *Repository
+	baseTime = time.Date(2024, 1, 14, 12, 0, 0, 0, time.UTC)
 )
 
 const (
@@ -27,10 +25,6 @@ const (
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
-
-	testLogger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelError,
-	}))
 
 	opt, err := pg.ParseURL(testDBURL)
 	if err != nil {
@@ -72,7 +66,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	testRepo = New(testDB, testLogger)
+	testRepo = New(testDB)
 
 	code := m.Run()
 
@@ -169,7 +163,7 @@ func TestGetAllNews_Integration(t *testing.T) {
 
 	for _, tt := range filterTests {
 		t.Run(tt.name, func(t *testing.T) {
-			news, err := repo.GetAllNews(ctx, tt.tagID, tt.categoryID, 1, 10)
+			news, err := repo.News(ctx, tt.tagID, tt.categoryID, 1, 10)
 			if err != nil {
 				t.Fatalf("GetAllNews failed: %v", err)
 			}
@@ -183,7 +177,7 @@ func TestGetAllNews_Integration(t *testing.T) {
 	}
 
 	t.Run("WithPaginationReturnsCorrectPage", func(t *testing.T) {
-		page1, err := repo.GetAllNews(ctx, nil, nil, 1, 3)
+		page1, err := repo.News(ctx, nil, nil, 1, 3)
 		if err != nil {
 			t.Fatalf("GetAllNews page1: %v", err)
 		}
@@ -191,7 +185,7 @@ func TestGetAllNews_Integration(t *testing.T) {
 			t.Fatalf("expected 3 items on page1, got %d", len(page1))
 		}
 
-		page2, err := repo.GetAllNews(ctx, nil, nil, 2, 3)
+		page2, err := repo.News(ctx, nil, nil, 2, 3)
 		if err != nil {
 			t.Fatalf("GetAllNews page2: %v", err)
 		}
@@ -222,7 +216,7 @@ func TestGetAllNews_Integration(t *testing.T) {
 
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
-				_, err := repo.GetAllNews(ctx, nil, nil, tc.page, tc.pageSize)
+				_, err := repo.News(ctx, nil, nil, tc.page, tc.pageSize)
 				if err == nil {
 					t.Fatalf("expected error, got nil")
 				}
@@ -254,7 +248,7 @@ func TestGetAllNews_Integration(t *testing.T) {
 			t.Fatalf("insert news in unpublished category: %v", err)
 		}
 
-		allNews, err := repo.GetAllNews(ctx, nil, nil, 1, 100)
+		allNews, err := repo.News(ctx, nil, nil, 1, 100)
 		if err != nil {
 			t.Fatalf("GetAllNews: %v", err)
 		}
@@ -284,7 +278,7 @@ func TestGetAllNews_Integration(t *testing.T) {
 			t.Fatalf("insert unpublished news: %v", err)
 		}
 
-		allNews, err := repo.GetAllNews(ctx, nil, nil, 1, 100)
+		allNews, err := repo.News(ctx, nil, nil, 1, 100)
 		if err != nil {
 			t.Fatalf("GetAllNews: %v", err)
 		}
@@ -300,7 +294,7 @@ func TestGetAllNews_Integration(t *testing.T) {
 	})
 
 	t.Run("ReturnsOnlyNewsWithPublishedStatus", func(t *testing.T) {
-		allNews, err := repo.GetAllNews(ctx, nil, nil, 1, 100)
+		allNews, err := repo.News(ctx, nil, nil, 1, 100)
 		if err != nil {
 			t.Fatalf("GetAllNews: %v", err)
 		}
@@ -318,7 +312,7 @@ func TestGetAllNews_Integration(t *testing.T) {
 	})
 
 	t.Run("LoadsCategoryViaRelation", func(t *testing.T) {
-		news, err := repo.GetAllNews(ctx, nil, nil, 1, 10)
+		news, err := repo.News(ctx, nil, nil, 1, 10)
 		if err != nil {
 			t.Fatalf("GetAllNews: %v", err)
 		}
@@ -352,7 +346,7 @@ func TestGetAllNews_Integration(t *testing.T) {
 			t.Fatalf("insert future news: %v", err)
 		}
 
-		allNews, err := repo.GetAllNews(ctx, nil, nil, 1, 100)
+		allNews, err := repo.News(ctx, nil, nil, 1, 100)
 		if err != nil {
 			t.Fatalf("GetAllNews: %v", err)
 		}
@@ -387,7 +381,7 @@ func TestGetNewsCount_Integration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			count, err := repo.GetNewsCount(ctx, tt.tagID, tt.categoryID)
+			count, err := repo.NewsCount(ctx, tt.tagID, tt.categoryID)
 			if err != nil {
 				t.Fatalf("GetNewsCount: %v", err)
 			}
@@ -402,7 +396,7 @@ func TestGetNewsByID_Integration(t *testing.T) {
 	tx, ctx, repo := withTx(t)
 
 	t.Run("WithValidIDReturnsNews", func(t *testing.T) {
-		allNews, err := repo.GetAllNews(ctx, nil, nil, 1, 1)
+		allNews, err := repo.News(ctx, nil, nil, 1, 1)
 		if err != nil {
 			t.Fatalf("GetAllNews: %v", err)
 		}
@@ -411,7 +405,7 @@ func TestGetNewsByID_Integration(t *testing.T) {
 		}
 
 		newsID := allNews[0].ID
-		news, err := repo.GetNewsByID(ctx, newsID)
+		news, err := repo.NewsByID(ctx, newsID)
 		if err != nil {
 			t.Fatalf("GetNewsByID: %v", err)
 		}
@@ -420,14 +414,14 @@ func TestGetNewsByID_Integration(t *testing.T) {
 
 	t.Run("WithInvalidIDReturnsError", func(t *testing.T) {
 		invalidID := 99999
-		news, err := repo.GetNewsByID(ctx, invalidID)
+		news, err := repo.NewsByID(ctx, invalidID)
 		if err == nil {
 			t.Fatalf("expected error for invalid news ID, got nil")
 		}
 		if news != nil {
 			t.Fatalf("expected nil news for invalid ID, got %+v", news)
 		}
-		if !errors.Is(err, ErrNewsNotFound) && !contains(err.Error(), "news not found") {
+		if !errors.Is(err, errors.New("news not found")) && !contains(err.Error(), "news not found") {
 			t.Fatalf("expected ErrNewsNotFound, got: %v", err)
 		}
 	})
@@ -447,7 +441,7 @@ func TestGetNewsByID_Integration(t *testing.T) {
 			t.Fatalf("insert unpublished news: %v", err)
 		}
 
-		got, err := repo.GetNewsByID(ctx, unpublishedNews.ID)
+		got, err := repo.NewsByID(ctx, unpublishedNews.ID)
 		if err == nil {
 			t.Fatalf("expected error for unpublished news, got nil (news=%+v)", got)
 		}
@@ -480,7 +474,7 @@ func TestGetNewsByID_Integration(t *testing.T) {
 			t.Fatalf("insert news in unpublished category: %v", err)
 		}
 
-		got, err := repo.GetNewsByID(ctx, newsInUnpublishedCategory.ID)
+		got, err := repo.NewsByID(ctx, newsInUnpublishedCategory.ID)
 		if err == nil {
 			t.Fatalf("expected error for news with unpublished category, got nil (news=%+v)", got)
 		}
@@ -505,14 +499,14 @@ func TestGetNewsByID_Integration(t *testing.T) {
 			t.Fatalf("insert future news: %v", err)
 		}
 
-		got, err := repo.GetNewsByID(ctx, futureNews.ID)
+		got, err := repo.NewsByID(ctx, futureNews.ID)
 		if err == nil {
 			t.Fatalf("expected error for news with future publishedAt, got nil (news=%+v)", got)
 		}
 		if got != nil {
 			t.Fatalf("expected nil news, got %+v", got)
 		}
-		if !errors.Is(err, ErrNewsNotFound) && !contains(err.Error(), "news not found") {
+		if !errors.Is(err, pg.ErrNoRows) && !contains(err.Error(), "news not found") {
 			t.Fatalf("expected ErrNewsNotFound, got: %v", err)
 		}
 	})
@@ -522,7 +516,7 @@ func TestGetAllCategories_Integration(t *testing.T) {
 	tx, ctx, repo := withTx(t)
 
 	t.Run("ReturnsAllPublishedCategories", func(t *testing.T) {
-		categories, err := repo.GetAllCategories(ctx)
+		categories, err := repo.Categories(ctx)
 		if err != nil {
 			t.Fatalf("GetAllCategories: %v", err)
 		}
@@ -549,7 +543,7 @@ func TestGetAllCategories_Integration(t *testing.T) {
 			t.Fatalf("insert unpublished category: %v", err)
 		}
 
-		categories, err := repo.GetAllCategories(ctx)
+		categories, err := repo.Categories(ctx)
 		if err != nil {
 			t.Fatalf("GetAllCategories: %v", err)
 		}
@@ -566,7 +560,7 @@ func TestGetAllTags_Integration(t *testing.T) {
 	tx, ctx, repo := withTx(t)
 
 	t.Run("ReturnsAllPublishedTags", func(t *testing.T) {
-		tags, err := repo.GetAllTags(ctx)
+		tags, err := repo.Tags(ctx)
 		if err != nil {
 			t.Fatalf("GetAllTags: %v", err)
 		}
@@ -592,7 +586,7 @@ func TestGetAllTags_Integration(t *testing.T) {
 			t.Fatalf("insert unpublished tag: %v", err)
 		}
 
-		tags, err := repo.GetAllTags(ctx)
+		tags, err := repo.Tags(ctx)
 		if err != nil {
 			t.Fatalf("GetAllTags: %v", err)
 		}
@@ -609,7 +603,7 @@ func TestGetTagsByIDs_Integration(t *testing.T) {
 	tx, ctx, repo := withTx(t)
 
 	t.Run("ReturnsTagIdsInGetAllNews", func(t *testing.T) {
-		news, err := repo.GetAllNews(ctx, nil, nil, 1, 10)
+		news, err := repo.News(ctx, nil, nil, 1, 10)
 		if err != nil {
 			t.Fatalf("GetAllNews: %v", err)
 		}
@@ -642,7 +636,7 @@ func TestGetTagsByIDs_Integration(t *testing.T) {
 		}
 
 		mixedTagIDs := []int32{1, int32(unpublishedTag.ID)}
-		tags, err := repo.GetTagsByIDs(ctx, mixedTagIDs)
+		tags, err := repo.TagsByIDs(ctx, mixedTagIDs)
 		if err != nil {
 			t.Fatalf("GetTagsByIDs: %v", err)
 		}
@@ -676,7 +670,7 @@ func TestGetTagsByIDs_Integration(t *testing.T) {
 			t.Fatalf("NewsID was not set after insert")
 		}
 
-		got, err := repo.GetTagsByIDs(ctx, nil)
+		got, err := repo.TagsByIDs(ctx, nil)
 		if err != nil {
 			t.Fatalf("GetTagsByIDs empty: %v", err)
 		}
@@ -707,7 +701,7 @@ func TestGetTagsByIDs_Integration(t *testing.T) {
 		for i, id := range newsWithNonExistentTags.TagIDs {
 			tagIDs[i] = int32(id)
 		}
-		got, err := repo.GetTagsByIDs(ctx, tagIDs)
+		got, err := repo.TagsByIDs(ctx, tagIDs)
 		if err != nil {
 			t.Fatalf("GetTagsByIDs non-existent: %v", err)
 		}

@@ -45,7 +45,7 @@ func ProvideDB(logger *slog.Logger) (*db.Repository, func(), error) {
 		return nil, nil, err
 	}
 
-	repo := db.New(dbConnect, logger)
+	repo := db.New(dbConnect)
 	cleanup := func() {
 		if err := repo.Close(); err != nil {
 			logger.Error("error closing database connection", "error", err)
