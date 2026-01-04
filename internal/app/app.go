@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/daniilsolovey/news-portal/configs"
+	"github.com/daniilsolovey/news-portal/config"
 	db "github.com/daniilsolovey/news-portal/internal/db"
 	"github.com/daniilsolovey/news-portal/internal/newsportal"
 	"github.com/daniilsolovey/news-portal/internal/rest"
@@ -24,10 +24,15 @@ type App struct {
 	Echo   *echo.Echo
 }
 
-func NewApp(cfg *configs.Config) (*App, func(), error) {
+func NewApp(cfg *config.Config) (*App, func(), error) {
+	logLevel := slog.LevelInfo
+	if cfg.Debug {
+		logLevel = slog.LevelDebug
+	}
+
 	logger := slog.New(
 		slog.NewTextHandler(
-			os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo},
+			os.Stdout, &slog.HandlerOptions{Level: logLevel},
 		),
 	)
 
@@ -39,22 +44,19 @@ func NewApp(cfg *configs.Config) (*App, func(), error) {
 		return nil, nil, fmt.Errorf("database not available: %w", err)
 	}
 
-	repo := db.New(dbConnect)
-
-	newsManager := newsportal.NewNewsManager(repo)
-
+	database := db.New(dbConnect)
+	newsManager := newsportal.NewNewsManager(database)
 	handler := rest.NewNewsHandler(newsManager, logger)
-
 	echo := handler.RegisterRoutes()
 
 	cleanup := func() {
-		if err := repo.Close(); err != nil {
+		if err := database.Close(); err != nil {
 			logger.Error("error closing database connection", "error", err)
 		}
 	}
 
 	return &App{
-		DB:     repo,
+		DB:     database,
 		Logger: logger,
 		Echo:   echo,
 	}, cleanup, nil

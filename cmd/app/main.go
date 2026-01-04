@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 
-	"github.com/daniilsolovey/news-portal/configs"
+	"github.com/daniilsolovey/news-portal/config"
 	_ "github.com/daniilsolovey/news-portal/docs"
 	"github.com/daniilsolovey/news-portal/internal/app"
 )
@@ -16,7 +17,10 @@ import (
 // @BasePath /
 
 func main() {
-	cfg := configs.Init()
+	cfg, err := config.Init()
+	if err != nil {
+		panic(fmt.Errorf("failed to initialize config: %w", err))
+	}
 
 	service, cleanup, err := app.NewApp(cfg)
 	if err != nil {

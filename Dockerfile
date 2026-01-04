@@ -28,10 +28,7 @@ RUN apk --no-cache add ca-certificates postgresql-client
 COPY --from=builder /app/news-portal ./news-portal
 COPY --from=builder /app/docs/patches ./migrations
 COPY --from=builder /app/frontend ./frontend
-
-# ENV
-ENV DATABASE_URL="postgres://user:password@postgres:5432/news_portal?sslmode=disable"
-ENV HTTP_PORT=3000
+COPY --from=builder /app/config.toml ./config.toml
 
 # Expose port
 EXPOSE 3000

@@ -1,25 +1,24 @@
 # Makefile for news-portal project
 
 APP_NAME := news-portal
-ENV_FILE := ./envs/.env.dev
 
 # Docker
 .PHONY: up down restart logs
 
 docker-build:
-	docker-compose --env-file $(ENV_FILE) build
+	docker-compose build
 
 docker-up:
-	docker-compose --env-file $(ENV_FILE) up
+	docker-compose up
 
 
 docker-down:
-	docker-compose --env-file $(ENV_FILE) down
+	docker-compose down
 
 restart: docker-down docker-up
 
 logs:
-	docker-compose --env-file $(ENV_FILE) logs -f
+	docker-compose logs -f
 
 # Go
 .PHONY: build run tidy test fmt vet

@@ -3,10 +3,10 @@ module github.com/daniilsolovey/news-portal
 go 1.24.4
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/go-pg/pg/v10 v10.15.0
 	github.com/jackc/pgx v3.6.2+incompatible
 	github.com/labstack/echo/v4 v4.14.0
-	github.com/namsral/flag v1.7.4-pre
 	github.com/pressly/goose/v3 v3.26.0
 	github.com/swaggo/swag v1.8.12
 )

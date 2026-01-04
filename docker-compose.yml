@@ -4,10 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: news-portal-app
-    env_file:
-      - envs/.env.dev
     ports:
-      - "${HTTP_PORT}:${HTTP_PORT}"
+      - "3000:3000"
     depends_on:
       postgres:
         condition: service_healthy
