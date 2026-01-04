@@ -30,18 +30,15 @@ func (u *Manager) NewsByFilter(ctx context.Context, tagID, categoryID *int, page
 
 	}
 
-	dbNewsWithTags, err := u.attachTagsBatch(ctx, dbNews)
+	newsList := NewNewsList(dbNews)
+
+	result, err := u.attachTagsBatch(ctx, newsList)
 	if err != nil {
 		u.log.Error("failed to attach tags to news", "error", err)
 		return nil, fmt.Errorf("failed to attach tags to news: %w", err)
 	}
 
-	news := make([]News, len(dbNewsWithTags))
-	for i := range dbNewsWithTags {
-		news[i] = NewNewsSummary(dbNewsWithTags[i])
-	}
-
-	return news, nil
+	return result, nil
 }
 
 func (u *Manager) NewsCount(ctx context.Context, tagID, categoryID *int) (int, error) {
@@ -61,13 +58,14 @@ func (u *Manager) NewsByID(ctx context.Context, newsID int) (*News, error) {
 		return nil, nil
 	}
 
-	dbNewsWithTags, err := u.attachTagsBatch(ctx, []db.News{*dbNews})
+	newsList := NewNewsList([]db.News{*dbNews})
+
+	result, err := u.attachTagsBatch(ctx, newsList)
 	if err != nil {
 		return nil, fmt.Errorf("failed to attach tags to news: %w", err)
 	}
 
-	news := NewNews(dbNewsWithTags[0])
-	return &news, nil
+	return &result[0], nil
 }
 
 func (u *Manager) Categories(ctx context.Context) ([]Category, error) {

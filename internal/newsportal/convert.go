@@ -43,6 +43,15 @@ func NewTags(list []db.Tag) []Tag {
 	return tags
 }
 
+func NewNewsList(list []db.News) []News {
+	news := make([]News, len(list))
+	for i := range list {
+		news[i] = NewNews(list[i])
+	}
+
+	return news
+}
+
 func NewNews(n db.News) News {
 	news := News{
 		NewsID:      n.ID,
@@ -102,28 +111,28 @@ func NewNewsSummary(n db.News) News {
 	return summary
 }
 
-func (u *Manager) attachTagsBatch(ctx context.Context, news []db.News) ([]db.News, error) {
+func (u *Manager) attachTagsBatch(ctx context.Context, news []News) ([]News, error) {
 	if len(news) == 0 {
 		return news, nil
 	}
 
-	tagSet := make(map[int32]struct{})
+	tagSet := make(map[int]struct{})
 	for i := range news {
-		for _, id := range news[i].TagIDs {
-			tagSet[int32(id)] = struct{}{}
+		for _, tag := range news[i].Tags {
+			tagSet[tag.TagID] = struct{}{}
 		}
 	}
 
 	if len(tagSet) == 0 {
 		for i := range news {
-			news[i].TagIDs = []int{}
+			news[i].Tags = []Tag{}
 		}
 		return news, nil
 	}
 
 	allTagIDs := make([]int32, 0, len(tagSet))
 	for id := range tagSet {
-		allTagIDs = append(allTagIDs, id)
+		allTagIDs = append(allTagIDs, int32(id))
 	}
 
 	tags, err := u.db.Tags(ctx)
@@ -138,15 +147,15 @@ func (u *Manager) attachTagsBatch(ctx context.Context, news []db.News) ([]db.New
 	}
 
 	for i := range news {
-		ids := news[i].TagIDs
+		ids := news[i].Tags
 		if len(ids) == 0 {
-			news[i].TagIDs = []int{}
+			news[i].Tags = []Tag{}
 			continue
 		}
 
 		out := make([]db.Tag, 0, len(ids))
 		for _, id := range ids {
-			if t, ok := tagsByID[int32(id)]; ok {
+			if t, ok := tagsByID[int32(id.TagID)]; ok {
 				out = append(out, t)
 			}
 		}
@@ -154,9 +163,9 @@ func (u *Manager) attachTagsBatch(ctx context.Context, news []db.News) ([]db.New
 		sort.Slice(out, func(i, j int) bool {
 			return out[i].Title < out[j].Title
 		})
-		news[i].TagIDs = make([]int, len(out))
-		for i := range out {
-			news[i].TagIDs[i] = int(out[i].ID)
+		news[i].Tags = make([]Tag, len(out))
+		for j := range out {
+			news[i].Tags[j] = NewTag(out[j])
 		}
 	}
 
