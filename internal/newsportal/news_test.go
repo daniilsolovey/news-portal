@@ -1,675 +1,520 @@
 package newsportal
 
-// import (
-// 	"context"
-// 	"errors"
-// 	"io"
-// 	"log/slog"
-// 	"testing"
-// 	"time"
+import (
+	"context"
+	"fmt"
+	"os"
+	"testing"
+	"time"
 
-// 	postgres "github.com/daniilsolovey/news-portal/internal/db"
-// 	"github.com/stretchr/testify/assert"
-// 	"github.com/stretchr/testify/require"
-// )
+	"github.com/daniilsolovey/news-portal/internal/db"
+	"github.com/go-pg/pg/v10"
+)
 
-// // noOpLogger creates a logger that discards all output for tests
-// func noOpLogger() *slog.Logger {
-// 	return slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{
-// 		Level: slog.LevelError + 1, // Set level above Error to suppress all logs
-// 	}))
-// }
+var (
+	testDB      *pg.DB
+	testManager *Manager
+)
 
-// // mockPostgresRepository is a manual stub implementation for testing
-// type mockPostgresRepository struct {
-// 	getAllNewsFunc       func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error)
-// 	getNewsCountFunc     func(ctx context.Context, tagID, categoryID *int) (int, error)
-// 	getNewsByIDFunc      func(ctx context.Context, newsID int) (*postgres.News, error)
-// 	getAllCategoriesFunc func(ctx context.Context) ([]postgres.Category, error)
-// 	getAllTagsFunc       func(ctx context.Context) ([]postgres.Tag, error)
-// }
+func TestMain(m *testing.M) {
+	ctx := context.Background()
 
-// func (m *mockPostgresRepository) Close() error {
-// 	return nil
-// }
+	opt, err := pg.ParseURL(db.TestDBURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to parse database URL: %v\n", err)
+		os.Exit(1)
+	}
 
-// func (m *mockPostgresRepository) Ping(ctx context.Context) error {
-// 	return nil
-// }
+	testDB = pg.Connect(opt)
 
-// func (m *mockPostgresRepository) GetAllNews(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error) {
-// 	if m.getAllNewsFunc != nil {
-// 		return m.getAllNewsFunc(ctx, tagID, categoryID, page, pageSize)
-// 	}
-// 	return nil, nil
-// }
+	if err := testDB.Ping(ctx); err != nil {
+		fmt.Fprintln(os.Stderr, "failed to connect to test database. Make sure PostgreSQL is running:")
+		fmt.Fprintln(os.Stderr, "  docker-compose -f docker-compose.test.yml up -d")
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		_ = testDB.Close()
+		os.Exit(1)
+	}
 
-// func (m *mockPostgresRepository) GetNewsCount(ctx context.Context, tagID, categoryID *int) (int, error) {
-// 	if m.getNewsCountFunc != nil {
-// 		return m.getNewsCountFunc(ctx, tagID, categoryID)
-// 	}
-// 	return 0, nil
-// }
+	if err := db.ResetPublicSchema(ctx, testDB); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to reset schema: %v\n", err)
+		_ = testDB.Close()
+		os.Exit(1)
+	}
 
-// func (m *mockPostgresRepository) GetNewsByID(ctx context.Context, newsID int) (*postgres.News, error) {
-// 	if m.getNewsByIDFunc != nil {
-// 		return m.getNewsByIDFunc(ctx, newsID)
-// 	}
-// 	return nil, nil
-// }
+	if err := db.RunMigrations(ctx, db.MigrationsDir); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to run migrations: %v\n", err)
+		_ = testDB.Close()
+		os.Exit(1)
+	}
 
-// func (m *mockPostgresRepository) GetAllCategories(ctx context.Context) ([]postgres.Category, error) {
-// 	if m.getAllCategoriesFunc != nil {
-// 		return m.getAllCategoriesFunc(ctx)
-// 	}
-// 	return nil, nil
-// }
+	if err := db.EnsureTablesExist(ctx, testDB, []string{"statuses", "categories", "tags", "news"}); err != nil {
+		fmt.Fprintf(os.Stderr, "schema verification failed: %v\n", err)
+		_ = testDB.Close()
+		os.Exit(1)
+	}
 
-// func (m *mockPostgresRepository) GetAllTags(ctx context.Context) ([]postgres.Tag, error) {
-// 	if m.getAllTagsFunc != nil {
-// 		return m.getAllTagsFunc(ctx)
-// 	}
-// 	return nil, nil
-// }
+	if err := db.LoadTestData(ctx, testDB); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load test data: %v\n", err)
+		_ = testDB.Close()
+		os.Exit(1)
+	}
 
-// func TestNewsUseCase_GetAllNews(t *testing.T) {
-// 	logger := noOpLogger()
-// 	ctx := context.Background()
-// 	testTime := time.Now()
-// 	updatedTime := testTime.Add(1 * time.Hour)
+	testRepo := db.New(testDB)
+	testManager = NewNewsManager(testRepo)
 
-// 	tests := []struct {
-// 		name           string
-// 		tagID          *int
-// 		categoryID     *int
-// 		page           int
-// 		pageSize       int
-// 		mockFunc       func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error)
-// 		expectedResult []NewsSummary
-// 		expectedError  error
-// 	}{
-// 		{
-// 			name:       "success without filters",
-// 			tagID:      nil,
-// 			categoryID: nil,
-// 			page:       1,
-// 			pageSize:   10,
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error) {
-// 				assert.Nil(t, tagID)
-// 				assert.Nil(t, categoryID)
-// 				assert.Equal(t, 1, page)
-// 				assert.Equal(t, 10, pageSize)
-// 				return []postgres.News{
-// 					{
-// 						NewsID:      1,
-// 						CategoryID:  1,
-// 						Title:       "News 1",
-// 						Content:     "Content 1",
-// 						Author:      "Author 1",
-// 						PublishedAt: testTime,
-// 						UpdatedAt:   &updatedTime,
-// 						StatusID:    1,
-// 						Category: &postgres.Category{
-// 							CategoryID:  1,
-// 							Title:       "Category 1",
-// 							OrderNumber: 1,
-// 							StatusID:    1,
-// 						},
-// 						Tags: []postgres.Tag{
-// 							{TagID: 1, Title: "Tag 1", StatusID: 1},
-// 						},
-// 					},
-// 					{
-// 						NewsID:      2,
-// 						CategoryID:  2,
-// 						Title:       "News 2",
-// 						Content:     "Content 2",
-// 						Author:      "Author 2",
-// 						PublishedAt: testTime,
-// 						UpdatedAt:   nil,
-// 						StatusID:    1,
-// 						Category: &postgres.Category{
-// 							CategoryID:  2,
-// 							Title:       "Category 2",
-// 							OrderNumber: 2,
-// 							StatusID:    1,
-// 						},
-// 						Tags: []postgres.Tag{},
-// 					},
-// 				}, nil
-// 			},
-// 			expectedResult: []NewsSummary{
-// 				{
-// 					NewsID:      1,
-// 					CategoryID:  1,
-// 					Title:       "News 1",
-// 					Author:      "Author 1",
-// 					PublishedAt: testTime,
-// 					UpdatedAt:   &updatedTime,
-// 					StatusID:    1,
-// 					Category: Category{
-// 						CategoryID:  1,
-// 						Title:       "Category 1",
-// 						OrderNumber: 1,
-// 						StatusID:    1,
-// 					},
-// 					Tags: []Tag{
-// 						{TagID: 1, Title: "Tag 1", StatusID: 1},
-// 					},
-// 				},
-// 				{
-// 					NewsID:      2,
-// 					CategoryID:  2,
-// 					Title:       "News 2",
-// 					Author:      "Author 2",
-// 					PublishedAt: testTime,
-// 					UpdatedAt:   nil,
-// 					StatusID:    1,
-// 					Category: Category{
-// 						CategoryID:  2,
-// 						Title:       "Category 2",
-// 						OrderNumber: 2,
-// 						StatusID:    1,
-// 					},
-// 					Tags: nil,
-// 				},
-// 			},
-// 			expectedError: nil,
-// 		},
-// 		{
-// 			name:       "success with tagID filter",
-// 			tagID:      intPtr(5),
-// 			categoryID: nil,
-// 			page:       2,
-// 			pageSize:   20,
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error) {
-// 				require.NotNil(t, tagID)
-// 				assert.Equal(t, 5, *tagID)
-// 				assert.Nil(t, categoryID)
-// 				assert.Equal(t, 2, page)
-// 				assert.Equal(t, 20, pageSize)
-// 				return []postgres.News{}, nil
-// 			},
-// 			expectedResult: []NewsSummary{},
-// 			expectedError:  nil,
-// 		},
-// 		{
-// 			name:       "success with categoryID filter",
-// 			tagID:      nil,
-// 			categoryID: intPtr(3),
-// 			page:       1,
-// 			pageSize:   10,
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error) {
-// 				assert.Nil(t, tagID)
-// 				require.NotNil(t, categoryID)
-// 				assert.Equal(t, 3, *categoryID)
-// 				return []postgres.News{}, nil
-// 			},
-// 			expectedResult: []NewsSummary{},
-// 			expectedError:  nil,
-// 		},
-// 		{
-// 			name:       "success with both filters",
-// 			tagID:      intPtr(1),
-// 			categoryID: intPtr(2),
-// 			page:       3,
-// 			pageSize:   15,
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error) {
-// 				require.NotNil(t, tagID)
-// 				require.NotNil(t, categoryID)
-// 				assert.Equal(t, 1, *tagID)
-// 				assert.Equal(t, 2, *categoryID)
-// 				assert.Equal(t, 3, page)
-// 				assert.Equal(t, 15, pageSize)
-// 				return []postgres.News{}, nil
-// 			},
-// 			expectedResult: []NewsSummary{},
-// 			expectedError:  nil,
-// 		},
-// 		{
-// 			name:       "repository error",
-// 			tagID:      nil,
-// 			categoryID: nil,
-// 			page:       1,
-// 			pageSize:   10,
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error) {
-// 				return nil, errors.New("database error")
-// 			},
-// 			expectedResult: nil,
-// 			expectedError:  errors.New("database error"),
-// 		},
-// 		{
-// 			name:       "empty result",
-// 			tagID:      nil,
-// 			categoryID: nil,
-// 			page:       1,
-// 			pageSize:   10,
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error) {
-// 				return []postgres.News{}, nil
-// 			},
-// 			expectedResult: []NewsSummary{},
-// 			expectedError:  nil,
-// 		},
-// 		{
-// 			name:       "content field removed in summary",
-// 			tagID:      nil,
-// 			categoryID: nil,
-// 			page:       1,
-// 			pageSize:   10,
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]postgres.News, error) {
-// 				return []postgres.News{
-// 					{
-// 						NewsID:      1,
-// 						CategoryID:  1,
-// 						Title:       "Test News",
-// 						Content:     "This content should not be in summary",
-// 						Author:      "Author",
-// 						PublishedAt: testTime,
-// 						StatusID:    1,
-// 						Category:    &postgres.Category{CategoryID: 1, Title: "Cat", OrderNumber: 1, StatusID: 1},
-// 						Tags:        []postgres.Tag{},
-// 					},
-// 				}, nil
-// 			},
-// 			expectedResult: []NewsSummary{
-// 				{
-// 					NewsID:      1,
-// 					CategoryID:  1,
-// 					Title:       "Test News",
-// 					Author:      "Author",
-// 					PublishedAt: testTime,
-// 					StatusID:    1,
-// 					Category:    Category{CategoryID: 1, Title: "Cat", OrderNumber: 1, StatusID: 1},
-// 					Tags:        nil,
-// 				},
-// 			},
-// 			expectedError: nil,
-// 		},
-// 	}
+	code := m.Run()
 
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			mockPostgres := &mockPostgresRepository{
-// 				getAllNewsFunc: tt.mockFunc,
-// 			}
-// 			uc := NewNewsUseCase(mockPostgres, logger)
-// 			result, err := uc.GetAllNews(ctx, tt.tagID, tt.categoryID, tt.page, tt.pageSize)
+	if err := testDB.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to close database connection: %v\n", err)
+	}
 
-// 			if tt.expectedError != nil {
-// 				assert.Error(t, err)
-// 				assert.Equal(t, tt.expectedError.Error(), err.Error())
-// 				assert.Nil(t, result)
-// 			} else {
-// 				assert.NoError(t, err)
-// 				assert.Equal(t, tt.expectedResult, result)
-// 			}
-// 		})
-// 	}
-// }
+	os.Exit(code)
+}
 
-// func TestNewsUseCase_GetNewsCount(t *testing.T) {
-// 	logger := noOpLogger()
-// 	ctx := context.Background()
+func withTx(t *testing.T) (*pg.Tx, context.Context, *Manager) {
+	t.Helper()
+	ctx := context.Background()
 
-// 	tests := []struct {
-// 		name          string
-// 		tagID         *int
-// 		categoryID    *int
-// 		mockFunc      func(ctx context.Context, tagID, categoryID *int) (int, error)
-// 		expectedCount int
-// 		expectedError error
-// 	}{
-// 		{
-// 			name:       "success without filters",
-// 			tagID:      nil,
-// 			categoryID: nil,
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int) (int, error) {
-// 				assert.Nil(t, tagID)
-// 				assert.Nil(t, categoryID)
-// 				return 42, nil
-// 			},
-// 			expectedCount: 42,
-// 			expectedError: nil,
-// 		},
-// 		{
-// 			name:       "success with tagID",
-// 			tagID:      intPtr(5),
-// 			categoryID: nil,
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int) (int, error) {
-// 				require.NotNil(t, tagID)
-// 				assert.Equal(t, 5, *tagID)
-// 				assert.Nil(t, categoryID)
-// 				return 10, nil
-// 			},
-// 			expectedCount: 10,
-// 			expectedError: nil,
-// 		},
-// 		{
-// 			name:       "success with categoryID",
-// 			tagID:      nil,
-// 			categoryID: intPtr(3),
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int) (int, error) {
-// 				assert.Nil(t, tagID)
-// 				require.NotNil(t, categoryID)
-// 				assert.Equal(t, 3, *categoryID)
-// 				return 7, nil
-// 			},
-// 			expectedCount: 7,
-// 			expectedError: nil,
-// 		},
-// 		{
-// 			name:       "success with both filters",
-// 			tagID:      intPtr(1),
-// 			categoryID: intPtr(2),
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int) (int, error) {
-// 				require.NotNil(t, tagID)
-// 				require.NotNil(t, categoryID)
-// 				assert.Equal(t, 1, *tagID)
-// 				assert.Equal(t, 2, *categoryID)
-// 				return 3, nil
-// 			},
-// 			expectedCount: 3,
-// 			expectedError: nil,
-// 		},
-// 		{
-// 			name:       "repository error",
-// 			tagID:      nil,
-// 			categoryID: nil,
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int) (int, error) {
-// 				return 0, errors.New("database error")
-// 			},
-// 			expectedCount: 0,
-// 			expectedError: errors.New("database error"),
-// 		},
-// 		{
-// 			name:       "zero count",
-// 			tagID:      nil,
-// 			categoryID: nil,
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int) (int, error) {
-// 				return 0, nil
-// 			},
-// 			expectedCount: 0,
-// 			expectedError: nil,
-// 		},
-// 	}
+	tx, err := testDB.Begin()
+	if err != nil {
+		t.Fatalf("failed to begin transaction: %v", err)
+	}
 
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			mockPostgres := &mockPostgresRepository{
-// 				getNewsCountFunc: tt.mockFunc,
-// 			}
-// 			uc := NewNewsUseCase(mockPostgres, logger)
-// 			count, err := uc.GetNewsCount(ctx, tt.tagID, tt.categoryID)
+	t.Cleanup(func() {
+		if err := tx.Rollback(); err != nil {
+			t.Errorf("failed to rollback transaction: %v", err)
+		}
+	})
 
-// 			if tt.expectedError != nil {
-// 				assert.Error(t, err)
-// 				assert.Equal(t, tt.expectedError.Error(), err.Error())
-// 				assert.Equal(t, 0, count)
-// 			} else {
-// 				assert.NoError(t, err)
-// 				assert.Equal(t, tt.expectedCount, count)
-// 			}
-// 		})
-// 	}
-// }
+	repo := db.New(tx)
+	manager := NewNewsManager(repo)
+	return tx, ctx, manager
+}
 
-// func TestNewsUseCase_GetNewsByID(t *testing.T) {
-// 	logger := noOpLogger()
-// 	ctx := context.Background()
-// 	testTime := time.Now()
+func TestManager_NewsByFilter_Integration(t *testing.T) {
+	_, ctx, manager := withTx(t)
 
-// 	tests := []struct {
-// 		name           string
-// 		newsID         int
-// 		mockFunc       func(ctx context.Context, newsID int) (*postgres.News, error)
-// 		expectedResult *News
-// 		expectedError  error
-// 	}{
-// 		{
-// 			name:   "success",
-// 			newsID: 1,
-// 			mockFunc: func(ctx context.Context, newsID int) (*postgres.News, error) {
-// 				assert.Equal(t, 1, newsID)
-// 				return &postgres.News{
-// 					NewsID:      1,
-// 					CategoryID:  1,
-// 					Title:       "Test News",
-// 					Content:     "Content",
-// 					Author:      "Author",
-// 					PublishedAt: testTime,
-// 					StatusID:    1,
-// 					Category: &postgres.Category{
-// 						CategoryID:  1,
-// 						Title:       "Category",
-// 						OrderNumber: 1,
-// 						StatusID:    1,
-// 					},
-// 					Tags: []postgres.Tag{
-// 						{TagID: 1, Title: "Tag 1", StatusID: 1},
-// 					},
-// 				}, nil
-// 			},
-// 			expectedResult: &News{
-// 				NewsID:      1,
-// 				CategoryID:  1,
-// 				Title:       "Test News",
-// 				Content:     "Content",
-// 				Author:      "Author",
-// 				PublishedAt: testTime,
-// 				StatusID:    1,
-// 				Category: Category{
-// 					CategoryID:  1,
-// 					Title:       "Category",
-// 					OrderNumber: 1,
-// 					StatusID:    1,
-// 				},
-// 				Tags: []Tag{
-// 					{TagID: 1, Title: "Tag 1", StatusID: 1},
-// 				},
-// 			},
-// 			expectedError: nil,
-// 		},
-// 		{
-// 			name:   "not found",
-// 			newsID: 999,
-// 			mockFunc: func(ctx context.Context, newsID int) (*postgres.News, error) {
-// 				return nil, errors.New("news with id 999 not found")
-// 			},
-// 			expectedResult: nil,
-// 			expectedError:  errors.New("news with id 999 not found"),
-// 		},
-// 		{
-// 			name:   "repository error",
-// 			newsID: 1,
-// 			mockFunc: func(ctx context.Context, newsID int) (*postgres.News, error) {
-// 				return nil, errors.New("database error")
-// 			},
-// 			expectedResult: nil,
-// 			expectedError:  errors.New("database error"),
-// 		},
-// 	}
+	t.Run("WithoutFiltersReturnsAllPublishedNews", func(t *testing.T) {
+		news, err := manager.NewsByFilter(ctx, nil, nil, 1, 10)
+		if err != nil {
+			t.Fatalf("NewsByFilter failed: %v", err)
+		}
+		if len(news) == 0 {
+			t.Error("expected to get news items, got empty result")
+		}
+		for i := range news {
+			assertNewsBasic(t, &news[i])
+			if news[i].Content == "" {
+				t.Errorf("news[%d] should have content in NewsByFilter result", i)
+			}
+		}
+		assertNewsSortedByPublishedAt(t, news)
+	})
 
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			mockPostgres := &mockPostgresRepository{
-// 				getNewsByIDFunc: tt.mockFunc,
-// 			}
-// 			uc := NewNewsUseCase(mockPostgres, logger)
-// 			result, err := uc.GetNewsByID(ctx, tt.newsID)
+	t.Run("WithCategoryFilterReturnsFilteredNews", func(t *testing.T) {
+		categoryID := intPtr(1)
+		news, err := manager.NewsByFilter(ctx, nil, categoryID, 1, 10)
+		if err != nil {
+			t.Fatalf("NewsByFilter failed: %v", err)
+		}
+		if len(news) < 2 {
+			t.Fatalf("expected at least 2 news items, got %d", len(news))
+		}
+		for _, item := range news {
+			if item.CategoryID != *categoryID {
+				t.Errorf("expected categoryID %d, got %d", *categoryID, item.CategoryID)
+			}
+			if item.Category.CategoryID != *categoryID {
+				t.Errorf("expected category loaded with id %d, got %d", *categoryID, item.Category.CategoryID)
+			}
+		}
+	})
 
-// 			if tt.expectedError != nil {
-// 				assert.Error(t, err)
-// 				assert.Equal(t, tt.expectedError.Error(), err.Error())
-// 				assert.Nil(t, result)
-// 			} else {
-// 				assert.NoError(t, err)
-// 				assert.Equal(t, tt.expectedResult, result)
-// 			}
-// 		})
-// 	}
-// }
+	t.Run("WithTagFilterReturnsFilteredNews", func(t *testing.T) {
+		tagID := intPtr(1)
+		news, err := manager.NewsByFilter(ctx, tagID, nil, 1, 10)
+		if err != nil {
+			t.Fatalf("NewsByFilter failed: %v", err)
+		}
+		if len(news) == 0 {
+			t.Fatalf("expected at least one news item, got empty result")
+		}
+		for _, item := range news {
+			hasTag := false
+			for _, tag := range item.Tags {
+				if tag.TagID == *tagID {
+					hasTag = true
+					break
+				}
+			}
+			if !hasTag {
+				t.Errorf("news %d (%s) does not have tag %d", item.NewsID, item.Title, *tagID)
+			}
+		}
+	})
 
-// func TestNewsUseCase_GetAllCategories(t *testing.T) {
-// 	logger := noOpLogger()
-// 	ctx := context.Background()
+	t.Run("WithBothTagAndCategoryFiltersReturnsFilteredNews", func(t *testing.T) {
+		tagID := intPtr(1)
+		categoryID := intPtr(1)
+		news, err := manager.NewsByFilter(ctx, tagID, categoryID, 1, 10)
+		if err != nil {
+			t.Fatalf("NewsByFilter failed: %v", err)
+		}
+		if len(news) < 2 {
+			t.Fatalf("expected at least 2 news items, got %d", len(news))
+		}
+		for _, item := range news {
+			if item.CategoryID != *categoryID {
+				t.Errorf("expected categoryID %d, got %d", *categoryID, item.CategoryID)
+			}
+			hasTag := false
+			for _, tag := range item.Tags {
+				if tag.TagID == *tagID {
+					hasTag = true
+					break
+				}
+			}
+			if !hasTag {
+				t.Errorf("news %d (%s) does not have tag %d", item.NewsID, item.Title, *tagID)
+			}
+		}
+	})
 
-// 	tests := []struct {
-// 		name           string
-// 		mockFunc       func(ctx context.Context) ([]postgres.Category, error)
-// 		expectedResult []Category
-// 		expectedError  error
-// 	}{
-// 		{
-// 			name: "success",
-// 			mockFunc: func(ctx context.Context) ([]postgres.Category, error) {
-// 				return []postgres.Category{
-// 					{
-// 						CategoryID:  1,
-// 						Title:       "Category 1",
-// 						OrderNumber: 1,
-// 						StatusID:    1,
-// 					},
-// 					{
-// 						CategoryID:  2,
-// 						Title:       "Category 2",
-// 						OrderNumber: 2,
-// 						StatusID:    1,
-// 					},
-// 				}, nil
-// 			},
-// 			expectedResult: []Category{
-// 				{
-// 					CategoryID:  1,
-// 					Title:       "Category 1",
-// 					OrderNumber: 1,
-// 					StatusID:    1,
-// 				},
-// 				{
-// 					CategoryID:  2,
-// 					Title:       "Category 2",
-// 					OrderNumber: 2,
-// 					StatusID:    1,
-// 				},
-// 			},
-// 			expectedError: nil,
-// 		},
-// 		{
-// 			name: "empty list",
-// 			mockFunc: func(ctx context.Context) ([]postgres.Category, error) {
-// 				return []postgres.Category{}, nil
-// 			},
-// 			expectedResult: []Category{},
-// 			expectedError:  nil,
-// 		},
-// 		{
-// 			name: "repository error",
-// 			mockFunc: func(ctx context.Context) ([]postgres.Category, error) {
-// 				return nil, errors.New("database error")
-// 			},
-// 			expectedResult: nil,
-// 			expectedError:  errors.New("database error"),
-// 		},
-// 	}
+	t.Run("WithPaginationReturnsCorrectPage", func(t *testing.T) {
+		page1, err := manager.NewsByFilter(ctx, nil, nil, 1, 3)
+		if err != nil {
+			t.Fatalf("NewsByFilter page1: %v", err)
+		}
+		if len(page1) != 3 {
+			t.Fatalf("expected 3 items on page1, got %d", len(page1))
+		}
 
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			mockPostgres := &mockPostgresRepository{
-// 				getAllCategoriesFunc: tt.mockFunc,
-// 			}
-// 			uc := NewNewsUseCase(mockPostgres, logger)
-// 			result, err := uc.GetAllCategories(ctx)
+		page2, err := manager.NewsByFilter(ctx, nil, nil, 2, 3)
+		if err != nil {
+			t.Fatalf("NewsByFilter page2: %v", err)
+		}
+		if len(page2) != 3 {
+			t.Fatalf("expected 3 items on page2, got %d", len(page2))
+		}
 
-// 			if tt.expectedError != nil {
-// 				assert.Error(t, err)
-// 				assert.Equal(t, tt.expectedError.Error(), err.Error())
-// 				assert.Nil(t, result)
-// 			} else {
-// 				assert.NoError(t, err)
-// 				assert.Equal(t, tt.expectedResult, result)
-// 			}
-// 		})
-// 	}
-// }
+		seen := make(map[int]struct{}, 6)
+		for _, n := range page1 {
+			seen[n.NewsID] = struct{}{}
+		}
+		for _, n := range page2 {
+			if _, ok := seen[n.NewsID]; ok {
+				t.Fatalf("news %d appears on both pages", n.NewsID)
+			}
+		}
+	})
 
-// func TestNewsUseCase_GetAllTags(t *testing.T) {
-// 	logger := noOpLogger()
-// 	ctx := context.Background()
+	t.Run("TagsAreAttachedToNews", func(t *testing.T) {
+		news, err := manager.NewsByFilter(ctx, nil, nil, 1, 10)
+		if err != nil {
+			t.Fatalf("NewsByFilter failed: %v", err)
+		}
+		if len(news) == 0 {
+			t.Fatalf("expected news items, got empty result")
+		}
 
-// 	tests := []struct {
-// 		name           string
-// 		mockFunc       func(ctx context.Context) ([]postgres.Tag, error)
-// 		expectedResult []Tag
-// 		expectedError  error
-// 	}{
-// 		{
-// 			name: "success",
-// 			mockFunc: func(ctx context.Context) ([]postgres.Tag, error) {
-// 				return []postgres.Tag{
-// 					{
-// 						TagID:    1,
-// 						Title:    "Tag 1",
-// 						StatusID: 1,
-// 					},
-// 					{
-// 						TagID:    2,
-// 						Title:    "Tag 2",
-// 						StatusID: 1,
-// 					},
-// 				}, nil
-// 			},
-// 			expectedResult: []Tag{
-// 				{
-// 					TagID:    1,
-// 					Title:    "Tag 1",
-// 					StatusID: 1,
-// 				},
-// 				{
-// 					TagID:    2,
-// 					Title:    "Tag 2",
-// 					StatusID: 1,
-// 				},
-// 			},
-// 			expectedError: nil,
-// 		},
-// 		{
-// 			name: "empty list",
-// 			mockFunc: func(ctx context.Context) ([]postgres.Tag, error) {
-// 				return []postgres.Tag{}, nil
-// 			},
-// 			expectedResult: []Tag{},
-// 			expectedError:  nil,
-// 		},
-// 		{
-// 			name: "repository error",
-// 			mockFunc: func(ctx context.Context) ([]postgres.Tag, error) {
-// 				return nil, errors.New("database error")
-// 			},
-// 			expectedResult: nil,
-// 			expectedError:  errors.New("database error"),
-// 		},
-// 	}
+		hasNewsWithTags := false
+		for _, item := range news {
+			if len(item.Tags) > 0 {
+				hasNewsWithTags = true
+				for _, tag := range item.Tags {
+					if tag.TagID == 0 {
+						t.Errorf("news %d has tag with zero TagID", item.NewsID)
+					}
+					if tag.Title == "" {
+						t.Errorf("news %d has tag with empty Title", item.NewsID)
+					}
+				}
+			}
+		}
+		if !hasNewsWithTags {
+			t.Error("expected at least one news item with tags")
+		}
+	})
+}
 
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			mockPostgres := &mockPostgresRepository{
-// 				getAllTagsFunc: tt.mockFunc,
-// 			}
-// 			uc := NewNewsUseCase(mockPostgres, logger)
-// 			result, err := uc.GetAllTags(ctx)
+func TestManager_NewsCount_Integration(t *testing.T) {
+	_, ctx, manager := withTx(t)
 
-// 			if tt.expectedError != nil {
-// 				assert.Error(t, err)
-// 				assert.Equal(t, tt.expectedError.Error(), err.Error())
-// 				assert.Nil(t, result)
-// 			} else {
-// 				assert.NoError(t, err)
-// 				assert.Equal(t, tt.expectedResult, result)
-// 			}
-// 		})
-// 	}
-// }
+	tests := []struct {
+		name       string
+		tagID      *int
+		categoryID *int
+		minCount   int
+	}{
+		{"WithoutFiltersReturnsTotalCount", nil, nil, 7},
+		{"WithCategoryFilterReturnsFilteredCount", nil, intPtr(1), 2},
+		{"WithTagFilterReturnsFilteredCount", intPtr(1), nil, 7},
+		{"WithBothFiltersReturnsFilteredCount", intPtr(1), intPtr(1), 2},
+	}
 
-// // Helper function to create int pointer
-// func intPtr(i int) *int {
-// 	return &i
-// }
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			count, err := manager.NewsCount(ctx, tt.tagID, tt.categoryID)
+			if err != nil {
+				t.Fatalf("NewsCount: %v", err)
+			}
+			if count < tt.minCount {
+				t.Fatalf("expected at least %d, got %d", tt.minCount, count)
+			}
+		})
+	}
+}
+
+func TestManager_NewsByID_Integration(t *testing.T) {
+	_, ctx, manager := withTx(t)
+
+	t.Run("WithValidIDReturnsNews", func(t *testing.T) {
+		allNews, err := manager.NewsByFilter(ctx, nil, nil, 1, 1)
+		if err != nil {
+			t.Fatalf("NewsByFilter: %v", err)
+		}
+		if len(allNews) == 0 {
+			t.Fatalf("no news items available for testing")
+		}
+
+		newsID := allNews[0].NewsID
+		news, err := manager.NewsByID(ctx, newsID)
+		if err != nil {
+			t.Fatalf("NewsByID: %v", err)
+		}
+		if news == nil {
+			t.Fatalf("expected news, got nil")
+		}
+		assertNewsValid(t, news, newsID)
+		if news.Content == "" {
+			t.Error("expected content to be present")
+		}
+	})
+
+	t.Run("WithInvalidIDReturnsNil", func(t *testing.T) {
+		invalidID := 99999
+		news, err := manager.NewsByID(ctx, invalidID)
+		if err != nil {
+			t.Fatalf("expected nil error for invalid news ID, got: %v", err)
+		}
+		if news != nil {
+			t.Fatalf("expected nil news for invalid ID, got %+v", news)
+		}
+	})
+
+	t.Run("TagsAreAttachedToNews", func(t *testing.T) {
+		allNews, err := manager.NewsByFilter(ctx, nil, nil, 1, 10)
+		if err != nil {
+			t.Fatalf("NewsByFilter: %v", err)
+		}
+		if len(allNews) == 0 {
+			t.Fatalf("no news items available")
+		}
+
+		// Find a news item with tags
+		var newsWithTags *News
+		for i := range allNews {
+			if len(allNews[i].Tags) > 0 {
+				newsWithTags = &allNews[i]
+				break
+			}
+		}
+
+		if newsWithTags == nil {
+			t.Skip("no news with tags found for testing")
+		}
+
+		news, err := manager.NewsByID(ctx, newsWithTags.NewsID)
+		if err != nil {
+			t.Fatalf("NewsByID: %v", err)
+		}
+		if news == nil {
+			t.Fatalf("expected news, got nil")
+		}
+
+		if len(news.Tags) == 0 {
+			t.Error("expected tags to be attached")
+		}
+		for _, tag := range news.Tags {
+			if tag.TagID == 0 {
+				t.Errorf("tag has zero TagID")
+			}
+			if tag.Title == "" {
+				t.Errorf("tag has empty Title")
+			}
+		}
+	})
+}
+
+func TestManager_Categories_Integration(t *testing.T) {
+	_, ctx, manager := withTx(t)
+
+	t.Run("ReturnsAllPublishedCategories", func(t *testing.T) {
+		categories, err := manager.Categories(ctx)
+		if err != nil {
+			t.Fatalf("Categories: %v", err)
+		}
+		if len(categories) < 5 {
+			t.Fatalf("expected at least 5 categories, got %d", len(categories))
+		}
+		for _, cat := range categories {
+			assertCategoryValid(t, cat)
+		}
+		for i := 0; i < len(categories)-1; i++ {
+			if categories[i].OrderNumber > categories[i+1].OrderNumber {
+				t.Fatalf("categories not sorted by orderNumber ASC")
+			}
+		}
+	})
+}
+
+func TestManager_Tags_Integration(t *testing.T) {
+	_, ctx, manager := withTx(t)
+
+	t.Run("ReturnsAllPublishedTags", func(t *testing.T) {
+		tags, err := manager.Tags(ctx)
+		if err != nil {
+			t.Fatalf("Tags: %v", err)
+		}
+		if len(tags) < 5 {
+			t.Fatalf("expected at least 5 tags, got %d", len(tags))
+		}
+		for _, tag := range tags {
+			assertTagValid(t, tag)
+		}
+		for i := 0; i < len(tags)-1; i++ {
+			if tags[i].Title > tags[i+1].Title {
+				t.Fatalf("tags not sorted by title ASC")
+			}
+		}
+	})
+}
+
+func TestManager_TagsByIds_Integration(t *testing.T) {
+	_, ctx, manager := withTx(t)
+
+	t.Run("ReturnsTagsForValidIds", func(t *testing.T) {
+		tagIDs := []int32{1, 2, 3}
+		tags, err := manager.TagsByIds(ctx, tagIDs)
+		if err != nil {
+			t.Fatalf("TagsByIds: %v", err)
+		}
+		if len(tags) != 3 {
+			t.Fatalf("expected 3 tags, got %d", len(tags))
+		}
+		for _, tag := range tags {
+			assertTagValid(t, tag)
+		}
+	})
+
+	t.Run("HandlesEmptyTagIds", func(t *testing.T) {
+		tags, err := manager.TagsByIds(ctx, nil)
+		if err != nil {
+			t.Fatalf("TagsByIds empty: %v", err)
+		}
+		if tags == nil {
+			t.Fatalf("expected empty slice, got nil")
+		}
+		if len(tags) != 0 {
+			t.Fatalf("expected empty slice, got %d items", len(tags))
+		}
+	})
+
+	t.Run("HandlesNonExistentTagIds", func(t *testing.T) {
+		tagIDs := []int32{99999, 99998}
+		tags, err := manager.TagsByIds(ctx, tagIDs)
+		if err != nil {
+			t.Fatalf("TagsByIds non-existent: %v", err)
+		}
+		if tags == nil {
+			t.Fatalf("expected empty slice, got nil")
+		}
+		if len(tags) != 0 {
+			t.Fatalf("expected empty slice for non-existent tags, got %d items", len(tags))
+		}
+	})
+}
+
+// Helper functions
+
+func intPtr(i int) *int { return &i }
+
+func assertNewsBasic(t *testing.T, news *News) {
+	t.Helper()
+
+	if news.NewsID == 0 {
+		t.Fatalf("invalid NewsID")
+	}
+	if news.Title == "" {
+		t.Fatalf("empty Title")
+	}
+	if news.CategoryID == 0 {
+		t.Fatalf("invalid CategoryID")
+	}
+	if news.Category.CategoryID == 0 {
+		t.Fatalf("category not loaded")
+	}
+	if news.PublishedAt.After(db.BaseTime.Add(365 * 24 * time.Hour)) {
+		t.Fatalf("publishedAt is unexpectedly in the future: %v", news.PublishedAt)
+	}
+}
+
+func assertNewsValid(t *testing.T, news *News, newsID int) {
+	t.Helper()
+	if news == nil {
+		t.Fatalf("news is nil")
+	}
+	if news.NewsID != newsID {
+		t.Fatalf("expected NewsID %d, got %d", newsID, news.NewsID)
+	}
+	if news.Title == "" {
+		t.Fatalf("empty Title")
+	}
+	if news.Content == "" {
+		t.Fatalf("empty Content")
+	}
+	if news.Author == "" {
+		t.Fatalf("empty Author")
+	}
+	if news.CategoryID == 0 {
+		t.Fatalf("invalid CategoryID")
+	}
+	if news.Category.CategoryID == 0 {
+		t.Fatalf("category not loaded")
+	}
+}
+
+func assertCategoryValid(t *testing.T, category Category) {
+	t.Helper()
+	if category.CategoryID == 0 {
+		t.Fatalf("invalid CategoryID")
+	}
+	if category.Title == "" {
+		t.Fatalf("empty Title")
+	}
+	if category.StatusID != 1 {
+		t.Fatalf("invalid StatusID: got %d want 1 (published)", category.StatusID)
+	}
+}
+
+func assertTagValid(t *testing.T, tag Tag) {
+	t.Helper()
+	if tag.TagID == 0 {
+		t.Fatalf("invalid TagID")
+	}
+	if tag.Title == "" {
+		t.Fatalf("empty Title")
+	}
+	if tag.StatusID != 1 {
+		t.Fatalf("invalid StatusID: got %d want 1 (published)", tag.StatusID)
+	}
+}
+
+func assertNewsSortedByPublishedAt(t *testing.T, news []News) {
+	t.Helper()
+	for i := 0; i < len(news)-1; i++ {
+		if news[i].PublishedAt.Before(news[i+1].PublishedAt) {
+			t.Fatalf("news not sorted by publishedAt desc at %d", i)
+		}
+	}
+}
