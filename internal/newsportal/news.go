@@ -3,7 +3,6 @@ package newsportal
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	db "github.com/daniilsolovey/news-portal/internal/db"
 )
@@ -12,7 +11,7 @@ type Manager struct {
 	db *db.Repository
 }
 
-func NewNewsUseCase(repo *db.Repository, log *slog.Logger) *Manager {
+func NewNewsManager(repo *db.Repository) *Manager {
 	return &Manager{
 		db: repo,
 	}

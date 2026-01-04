@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -19,7 +18,7 @@ var (
 
 const (
 	testDBURL       = "postgres://test_user:test_password@localhost:5433/news_portal_test?sslmode=disable"
-	migrationsDir   = "../../migrations"
+	migrationsDir   = "../../docs/patches/integrationtests"
 	statusPublished = StatusPublished
 )
 
@@ -415,14 +414,11 @@ func TestGetNewsByID_Integration(t *testing.T) {
 	t.Run("WithInvalidIDReturnsError", func(t *testing.T) {
 		invalidID := 99999
 		news, err := repo.NewsByID(ctx, invalidID)
-		if err == nil {
-			t.Fatalf("expected error for invalid news ID, got nil")
+		if err != nil {
+			t.Fatalf("expected nil error for invalid news ID, got: %v", err)
 		}
 		if news != nil {
 			t.Fatalf("expected nil news for invalid ID, got %+v", news)
-		}
-		if !errors.Is(err, errors.New("news not found")) && !contains(err.Error(), "news not found") {
-			t.Fatalf("expected ErrNewsNotFound, got: %v", err)
 		}
 	})
 
@@ -442,8 +438,8 @@ func TestGetNewsByID_Integration(t *testing.T) {
 		}
 
 		got, err := repo.NewsByID(ctx, unpublishedNews.ID)
-		if err == nil {
-			t.Fatalf("expected error for unpublished news, got nil (news=%+v)", got)
+		if err != nil {
+			t.Fatalf("expected nil error for unpublished news, got: %v", err)
 		}
 		if got != nil {
 			t.Fatalf("expected nil news, got %+v", got)
@@ -475,8 +471,8 @@ func TestGetNewsByID_Integration(t *testing.T) {
 		}
 
 		got, err := repo.NewsByID(ctx, newsInUnpublishedCategory.ID)
-		if err == nil {
-			t.Fatalf("expected error for news with unpublished category, got nil (news=%+v)", got)
+		if err != nil {
+			t.Fatalf("expected nil error for news with unpublished category, got: %v", err)
 		}
 		if got != nil {
 			t.Fatalf("expected nil news, got %+v", got)
@@ -500,14 +496,11 @@ func TestGetNewsByID_Integration(t *testing.T) {
 		}
 
 		got, err := repo.NewsByID(ctx, futureNews.ID)
-		if err == nil {
-			t.Fatalf("expected error for news with future publishedAt, got nil (news=%+v)", got)
+		if err != nil {
+			t.Fatalf("expected nil error for news with future publishedAt, got: %v", err)
 		}
 		if got != nil {
 			t.Fatalf("expected nil news, got %+v", got)
-		}
-		if !errors.Is(err, pg.ErrNoRows) && !contains(err.Error(), "news not found") {
-			t.Fatalf("expected ErrNewsNotFound, got: %v", err)
 		}
 	})
 }

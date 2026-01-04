@@ -26,7 +26,7 @@ RUN apk --no-cache add ca-certificates postgresql-client
 
 # Copy necessary files
 COPY --from=builder /app/news-portal ./news-portal
-COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/docs/patches ./migrations
 COPY --from=builder /app/frontend ./frontend
 
 # ENV

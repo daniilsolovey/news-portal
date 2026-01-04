@@ -1,35 +1,55 @@
 package configs
 
 import (
-	"log"
-	"os"
+	"fmt"
+	"time"
 
-	"github.com/spf13/viper"
+	"github.com/go-pg/pg/v10"
+	"github.com/namsral/flag"
 )
 
-func Init() {
-	envFile := os.Getenv("ENV_FILE")
-	if envFile == "" {
-		envFile = "envs/.env.dev"
+type Config struct {
+	Database pg.Options
+	Host     string
+	Port     int
+}
+
+var cfg Config
+
+func Init() *Config {
+	var databaseURL string
+	var dbMaxConns int
+	var dbMaxConnLifetime string
+
+	flag.StringVar(&databaseURL, "database-url", "postgres://user:password@localhost:5432/news_portal?sslmode=disable", "database connection URL (DATABASE_URL)")
+	flag.IntVar(&dbMaxConns, "db-max-conns", 5, "maximum number of database connections (DB_MAX_CONNS)")
+	flag.StringVar(&dbMaxConnLifetime, "db-max-conn-lifetime", "300s", "maximum lifetime of database connection (DB_MAX_CONN_LIFETIME)")
+	flag.StringVar(&cfg.Host, "host", "0.0.0.0", "host to bind server (HOST)")
+	flag.IntVar(&cfg.Port, "port", 3000, "HTTP server port (PORT)")
+
+	flag.Parse()
+
+	opt, err := pg.ParseURL(databaseURL)
+	if err != nil {
+		panic(fmt.Errorf("failed to parse database URL: %w", err))
 	}
 
-	viper.SetConfigFile(envFile)
-	viper.SetConfigType("env")
+	opt.MaxRetries = 3
+	opt.PoolSize = dbMaxConns
 
-	// load .env file if exist
-	if err := viper.ReadInConfig(); err != nil {
-		log.Printf("config: no config file loaded (%v), using ENV or defaults", err)
+	if dbMaxConnLifetime != "" {
+		lifetime, err := time.ParseDuration(dbMaxConnLifetime)
+		if err != nil {
+			panic(fmt.Errorf("failed to parse DB_MAX_CONN_LIFETIME: %w", err))
+		}
+		opt.MaxConnAge = lifetime
 	}
 
-	// read environment variables (if file not exist)
-	viper.AutomaticEnv()
+	cfg.Database = *opt
 
-	// default values if file not exist and environment variables not set
-	viper.SetDefault("SERVICE_NAME", "news-portal")
-	viper.SetDefault("HTTP_PORT", "3000")
-	viper.SetDefault(
-		"DATABASE_URL", "postgres://user:password@localhost:5432/news_portal?sslmode=disable")
-	viper.SetDefault("DB_MAX_CONNS", 5)
-	viper.SetDefault("DB_MAX_CONN_LIFETIME", "300s")
-	viper.SetDefault("DB_LOG_QUERIES", false)
+	return &cfg
+}
+
+func Get() *Config {
+	return &cfg
 }
