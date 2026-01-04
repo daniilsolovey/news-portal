@@ -9,14 +9,12 @@ import (
 )
 
 type Manager struct {
-	db  *db.Repository
-	log *slog.Logger
+	db *db.Repository
 }
 
 func NewNewsUseCase(repo *db.Repository, log *slog.Logger) *Manager {
 	return &Manager{
-		db:  repo,
-		log: log,
+		db: repo,
 	}
 }
 
@@ -27,14 +25,12 @@ func (u *Manager) NewsByFilter(ctx context.Context, tagID, categoryID *int, page
 		page, pageSize)
 	if err != nil {
 		return nil, fmt.Errorf("db get news: %w", err)
-
 	}
 
 	newsList := NewNewsList(dbNews)
 
 	result, err := u.attachTagsBatch(ctx, newsList)
 	if err != nil {
-		u.log.Error("failed to attach tags to news", "error", err)
 		return nil, fmt.Errorf("failed to attach tags to news: %w", err)
 	}
 
@@ -78,4 +74,20 @@ func (u *Manager) Tags(ctx context.Context) ([]Tag, error) {
 	list, err := u.db.Tags(ctx)
 
 	return NewTags(list), err
+}
+
+func (u *Manager) TagsByIds(ctx context.Context, newsIDs []int32) ([]Tag, error) {
+	list, err := u.db.TagsByIDs(ctx, newsIDs)
+	if err != nil {
+		return nil, fmt.Errorf("db get tags by ids: %w", err)
+	} else if list == nil {
+		return nil, nil
+	}
+
+	tags := make([]Tag, len(list))
+	for i := range list {
+		tags[i] = NewTag(list[i])
+	}
+
+	return tags, nil
 }

@@ -36,11 +36,11 @@ func (h *NewsHandler) RegisterRoutes() *echo.Echo {
 }
 
 func (h *NewsHandler) registerAPIRoutes(e *echo.Echo) {
-	e.GET("/api/v1/all_news", h.GetAllNews)
-	e.GET("/api/v1/count", h.GetNewsCount)
-	e.GET("/api/v1/news/:id", h.GetNewsByID)
-	e.GET("/api/v1/categories", h.GetAllCategories)
-	e.GET("/api/v1/tags", h.GetAllTags)
+	e.GET("/api/v1/news", h.News)
+	e.GET("/api/v1/news/count", h.NewsCount)
+	e.GET("/api/v1/news/:id", h.NewsByID)
+	e.GET("/api/v1/categories", h.Categories)
+	e.GET("/api/v1/tags", h.Tags)
 }
 
 func (h *NewsHandler) registerHealthCheck(e *echo.Echo) {

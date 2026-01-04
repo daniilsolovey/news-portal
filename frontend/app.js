@@ -55,7 +55,7 @@ async function getAllNews() {
     const page = document.getElementById('allNewsPage').value || 1;
     const pageSize = document.getElementById('allNewsPageSize').value || 10;
 
-    let url = `${API_BASE_URL}/all_news?page=${page}&pageSize=${pageSize}`;
+    let url = `${API_BASE_URL}/news?page=${page}&pageSize=${pageSize}`;
     if (tagId) url += `&tagId=${tagId}`;
     if (categoryId) url += `&categoryId=${categoryId}`;
 
@@ -96,7 +96,7 @@ async function getNewsCount() {
     const tagId = document.getElementById('countTagId').value;
     const categoryId = document.getElementById('countCategoryId').value;
 
-    let url = `${API_BASE_URL}/count`;
+    let url = `${API_BASE_URL}/news/count`;
     if (tagId) url += `?tagId=${tagId}`;
     if (categoryId) {
         url += tagId ? `&categoryId=${categoryId}` : `?categoryId=${categoryId}`;

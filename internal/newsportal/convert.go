@@ -17,13 +17,17 @@ func NewCategory(c db.Category) Category {
 	}
 }
 
-func NewCategories(list []db.Category) []Category {
-	categories := make([]Category, len(list))
+func Map[From, To any](list []From, converter func(From) To) []To {
+	result := make([]To, len(list))
 	for i := range list {
-		categories[i] = NewCategory(list[i])
+		result[i] = converter(list[i])
 	}
 
-	return categories
+	return result
+}
+
+func NewCategories(list []db.Category) []Category {
+	return Map(list, NewCategory)
 }
 
 func NewTag(t db.Tag) Tag {
@@ -35,21 +39,11 @@ func NewTag(t db.Tag) Tag {
 }
 
 func NewTags(list []db.Tag) []Tag {
-	tags := make([]Tag, len(list))
-	for i := range list {
-		tags[i] = NewTag(list[i])
-	}
-
-	return tags
+	return Map(list, NewTag)
 }
 
 func NewNewsList(list []db.News) []News {
-	news := make([]News, len(list))
-	for i := range list {
-		news[i] = NewNews(list[i])
-	}
-
-	return news
+	return Map(list, NewNews)
 }
 
 func NewNews(n db.News) News {
@@ -68,47 +62,16 @@ func NewNews(n db.News) News {
 		news.Category = NewCategory(*n.Category)
 	}
 
-	if len(n.TagIDs) > 0 {
-		news.Tags = make([]Tag, len(n.TagIDs))
-		for i := range n.TagIDs {
-			news.Tags[i] = NewTag(db.Tag{
-				ID:       n.TagIDs[i],
-				StatusID: n.StatusID,
-				Title:    n.Title,
-			})
-		}
+	news.Tags = make([]Tag, len(n.TagIDs))
+	for i := range n.TagIDs {
+		news.Tags[i] = NewTag(db.Tag{
+			ID:       n.TagIDs[i],
+			StatusID: n.StatusID,
+			Title:    n.Title,
+		})
 	}
 
 	return news
-}
-
-func NewNewsSummary(n db.News) News {
-	summary := News{
-		NewsID:      n.ID,
-		CategoryID:  n.CategoryID,
-		Title:       n.Title,
-		Author:      n.Author,
-		PublishedAt: n.PublishedAt,
-		UpdatedAt:   n.UpdatedAt,
-		StatusID:    n.StatusID,
-	}
-
-	if n.Category != nil {
-		summary.Category = NewCategory(*n.Category)
-	}
-
-	if len(n.TagIDs) > 0 {
-		summary.Tags = make([]Tag, len(n.TagIDs))
-		for i := range n.TagIDs {
-			summary.Tags[i] = NewTag(db.Tag{
-				ID:       n.TagIDs[i],
-				StatusID: n.StatusID,
-				Title:    n.Title,
-			})
-		}
-	}
-
-	return summary
 }
 
 func (u *Manager) attachTagsBatch(ctx context.Context, news []News) ([]News, error) {
@@ -135,15 +98,15 @@ func (u *Manager) attachTagsBatch(ctx context.Context, news []News) ([]News, err
 		allTagIDs = append(allTagIDs, int32(id))
 	}
 
-	tags, err := u.db.Tags(ctx)
+	tags, err := u.TagsByIds(ctx, allTagIDs)
 	if err != nil {
 		return nil, fmt.Errorf("get tags by ids: %w", err)
 	}
 
-	tagsByID := make(map[int32]db.Tag, len(tags))
+	tagsByID := make(map[int]Tag, len(tags))
 	for i := range tags {
 		t := tags[i]
-		tagsByID[int32(t.ID)] = t
+		tagsByID[t.TagID] = t
 	}
 
 	for i := range news {
@@ -153,9 +116,9 @@ func (u *Manager) attachTagsBatch(ctx context.Context, news []News) ([]News, err
 			continue
 		}
 
-		out := make([]db.Tag, 0, len(ids))
+		out := make([]Tag, 0, len(ids))
 		for _, id := range ids {
-			if t, ok := tagsByID[int32(id.TagID)]; ok {
+			if t, ok := tagsByID[id.TagID]; ok {
 				out = append(out, t)
 			}
 		}
@@ -163,10 +126,7 @@ func (u *Manager) attachTagsBatch(ctx context.Context, news []News) ([]News, err
 		sort.Slice(out, func(i, j int) bool {
 			return out[i].Title < out[j].Title
 		})
-		news[i].Tags = make([]Tag, len(out))
-		for j := range out {
-			news[i].Tags[j] = NewTag(out[j])
-		}
+		news[i].Tags = out
 	}
 
 	return news, nil

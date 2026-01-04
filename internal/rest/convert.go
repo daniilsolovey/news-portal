@@ -17,6 +17,17 @@ func newTag(t newsportal.Tag) Tag {
 	}
 }
 
+func newTags(tags []newsportal.Tag) []Tag {
+	if len(tags) == 0 {
+		return nil
+	}
+	result := make([]Tag, len(tags))
+	for i := range tags {
+		result[i] = newTag(tags[i])
+	}
+	return result
+}
+
 func NewNews(n newsportal.News) News {
 	news := News{
 		NewsID:      n.NewsID,
@@ -26,13 +37,7 @@ func NewNews(n newsportal.News) News {
 		Author:      n.Author,
 		PublishedAt: n.PublishedAt,
 		Category:    newCategory(n.Category),
-	}
-
-	if len(n.Tags) > 0 {
-		news.Tags = make([]Tag, len(n.Tags))
-		for i := range n.Tags {
-			news.Tags[i] = newTag(n.Tags[i])
-		}
+		Tags:        newTags(n.Tags),
 	}
 
 	return news
@@ -47,13 +52,7 @@ func NewNewsSummary(n newsportal.News) News {
 		PublishedAt: n.PublishedAt,
 		Content:     n.Content,
 		Category:    newCategory(n.Category),
-	}
-
-	if len(n.Tags) > 0 {
-		summary.Tags = make([]Tag, len(n.Tags))
-		for i := range n.Tags {
-			summary.Tags[i] = newTag(n.Tags[i])
-		}
+		Tags:        newTags(n.Tags),
 	}
 
 	return summary
