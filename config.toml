@@ -1,16 +1,10 @@
 # Development TOML configuration file for News Portal
-# This file is used for development environment
 
-[database]
-# Database connection URL
-url = "postgres://user:password@postgres:5432/news_portal?sslmode=disable"
-# Maximum number of database connections
-max_conns = 5
-# Maximum lifetime of database connection (e.g., "300s", "5m", "1h")
-max_conn_lifetime = "300s"
+[Database]
+URL = "postgres://user:password@postgres:5432/news_portal?sslmode=disable"
+MaxConns = 5
+MaxConnsLifetime = "300s"
 
-[server]
-# Host to bind the server
-host = "0.0.0.0"
-# HTTP server port
-port = 3000
+[App]
+Host = "0.0.0.0"
+Port = 3000

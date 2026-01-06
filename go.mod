@@ -32,6 +32,7 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
+	github.com/namsral/flag v1.7.4-pre // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect

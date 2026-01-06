@@ -4,11 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	"github.com/daniilsolovey/news-portal/config"
 	db "github.com/daniilsolovey/news-portal/internal/db"
@@ -24,70 +19,23 @@ type App struct {
 	Echo   *echo.Echo
 }
 
-func NewApp(cfg *config.Config) (*App, func(), error) {
-	logLevel := slog.LevelInfo
-	if cfg.Debug {
-		logLevel = slog.LevelDebug
-	}
-
-	logger := slog.New(
-		slog.NewTextHandler(
-			os.Stdout, &slog.HandlerOptions{Level: logLevel},
-		),
-	)
-
-	dbConnect := pg.Connect(&cfg.Database)
-
-	ctx := context.Background()
-	if err := dbConnect.Ping(ctx); err != nil {
-		dbConnect.Close()
-		return nil, nil, fmt.Errorf("database not available: %w", err)
-	}
-
+func New(cfg *config.Config, dbConnect *pg.DB, logger *slog.Logger) *App {
 	database := db.New(dbConnect)
-	newsManager := newsportal.NewNewsManager(database)
-	handler := rest.NewNewsHandler(newsManager, logger)
-	echo := handler.RegisterRoutes()
-
-	cleanup := func() {
-		if err := database.Close(); err != nil {
-			logger.Error("error closing database connection", "error", err)
-		}
-	}
+	handler := rest.NewNewsHandler(
+		newsportal.NewNewsManager(database),
+		logger,
+	)
 
 	return &App{
 		DB:     database,
 		Logger: logger,
-		Echo:   echo,
-	}, cleanup, nil
+		Echo:   handler.RegisterRoutes(),
+	}
 }
 
 func (a *App) Run(ctx context.Context, port int) error {
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
 	addr := fmt.Sprintf(":%d", port)
-	go func() {
-		a.Logger.Info("HTTP server started", "port", port)
-		if err := a.Echo.Start(addr); err != nil &&
-			err != http.ErrServerClosed {
-			a.Logger.Error("HTTP server error", "err", err)
-			os.Exit(1)
-		}
-	}()
-
-	<-quit
-	a.Logger.Info("service stopping")
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := a.GracefulShutdown(shutdownCtx); err != nil {
-		a.Logger.Error("server forced to shutdown", "err", err)
-		return err
-	}
-
-	return nil
+	return a.Echo.Start(addr)
 }
 
 func (a *App) GracefulShutdown(ctx context.Context) error {
