@@ -59,6 +59,17 @@ func (h *NewsHandler) News(c echo.Context) error {
 	var req NewsRequest
 	if err := c.Bind(&req); err != nil {
 		h.log.Warn("News: failed to bind request", "error", err)
+		// Check which specific parameter is invalid
+		if tagIdStr := c.QueryParam("tagId"); tagIdStr != "" {
+			if _, parseErr := strconv.Atoi(tagIdStr); parseErr != nil {
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid tagId"})
+			}
+		}
+		if categoryIdStr := c.QueryParam("categoryId"); categoryIdStr != "" {
+			if _, parseErr := strconv.Atoi(categoryIdStr); parseErr != nil {
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid categoryId"})
+			}
+		}
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request parameters"})
 	}
 
@@ -134,6 +145,17 @@ func (h *NewsHandler) NewsCount(c echo.Context) error {
 	var req NewsCountRequest
 	if err := c.Bind(&req); err != nil {
 		h.log.Warn("NewsCount: failed to bind request", "error", err)
+		// Check which specific parameter is invalid
+		if tagIdStr := c.QueryParam("tagId"); tagIdStr != "" {
+			if _, parseErr := strconv.Atoi(tagIdStr); parseErr != nil {
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid tagId"})
+			}
+		}
+		if categoryIdStr := c.QueryParam("categoryId"); categoryIdStr != "" {
+			if _, parseErr := strconv.Atoi(categoryIdStr); parseErr != nil {
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid categoryId"})
+			}
+		}
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request parameters"})
 	}
 

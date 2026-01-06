@@ -75,7 +75,7 @@ func (u *Manager) Tags(ctx context.Context) ([]Tag, error) {
 	return NewTags(list), err
 }
 
-func (u *Manager) TagsByIds(ctx context.Context, newsIDs []int32) ([]Tag, error) {
+func (u *Manager) TagsByIds(ctx context.Context, newsIDs []int) ([]Tag, error) {
 	list, err := u.db.TagsByIDs(ctx, newsIDs)
 	if err != nil {
 		return nil, err

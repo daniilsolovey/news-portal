@@ -130,7 +130,7 @@ func TestGetAllNews_Integration(t *testing.T) {
 			minCount:   1,
 			validate: func(t *testing.T, news []News) {
 				t.Helper()
-				wantTagID := int32(1)
+				wantTagID := int(1)
 				for _, item := range news {
 					if !hasTagID(item.TagIDs, wantTagID) {
 						t.Errorf("news %d (%s) does not have tag %d in TagIDs", item.ID, item.Title, wantTagID)
@@ -145,7 +145,7 @@ func TestGetAllNews_Integration(t *testing.T) {
 			minCount:   2,
 			validate: func(t *testing.T, news []News) {
 				t.Helper()
-				wantTagID := int32(1)
+				wantTagID := int(1)
 				wantCategoryID := 1
 				for _, item := range news {
 					if item.CategoryID != wantCategoryID {
@@ -627,7 +627,7 @@ func TestGetTagsByIDs_Integration(t *testing.T) {
 			t.Fatalf("insert unpublished tag: %v", err)
 		}
 
-		mixedTagIDs := []int32{1, int32(unpublishedTag.ID)}
+		mixedTagIDs := []int{1, int(unpublishedTag.ID)}
 		tags, err := repo.TagsByIDs(ctx, mixedTagIDs)
 		if err != nil {
 			t.Fatalf("GetTagsByIDs: %v", err)
@@ -689,9 +689,9 @@ func TestGetTagsByIDs_Integration(t *testing.T) {
 			t.Fatalf("NewsID was not set after insert")
 		}
 
-		tagIDs := make([]int32, len(newsWithNonExistentTags.TagIDs))
+		tagIDs := make([]int, len(newsWithNonExistentTags.TagIDs))
 		for i, id := range newsWithNonExistentTags.TagIDs {
-			tagIDs[i] = int32(id)
+			tagIDs[i] = id
 		}
 		got, err := repo.TagsByIDs(ctx, tagIDs)
 		if err != nil {
@@ -705,9 +705,9 @@ func TestGetTagsByIDs_Integration(t *testing.T) {
 
 func intPtr(i int) *int { return &i }
 
-func hasTagID(tagIDs []int, id int32) bool {
+func hasTagID(tagIDs []int, id int) bool {
 	for _, tagID := range tagIDs {
-		if int32(tagID) == id {
+		if int(tagID) == id {
 			return true
 		}
 	}

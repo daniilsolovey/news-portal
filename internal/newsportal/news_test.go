@@ -104,7 +104,7 @@ func TestManager_NewsByFilter_Integration(t *testing.T) {
 		}
 		for i := range news {
 			assertNewsBasic(t, &news[i])
-			if news[i].Content == "" {
+			if *news[i].Content == "" {
 				t.Errorf("news[%d] should have content in NewsByFilter result", i)
 			}
 		}
@@ -124,8 +124,8 @@ func TestManager_NewsByFilter_Integration(t *testing.T) {
 			if item.CategoryID != *categoryID {
 				t.Errorf("expected categoryID %d, got %d", *categoryID, item.CategoryID)
 			}
-			if item.Category.CategoryID != *categoryID {
-				t.Errorf("expected category loaded with id %d, got %d", *categoryID, item.Category.CategoryID)
+			if item.Category.ID != *categoryID {
+				t.Errorf("expected category loaded with id %d, got %d", *categoryID, item.Category.ID)
 			}
 		}
 	})
@@ -142,13 +142,13 @@ func TestManager_NewsByFilter_Integration(t *testing.T) {
 		for _, item := range news {
 			hasTag := false
 			for _, tag := range item.Tags {
-				if tag.TagID == *tagID {
+				if tag.ID == *tagID {
 					hasTag = true
 					break
 				}
 			}
 			if !hasTag {
-				t.Errorf("news %d (%s) does not have tag %d", item.NewsID, item.Title, *tagID)
+				t.Errorf("news %d (%s) does not have tag %d", item.ID, item.Title, *tagID)
 			}
 		}
 	})
@@ -169,13 +169,13 @@ func TestManager_NewsByFilter_Integration(t *testing.T) {
 			}
 			hasTag := false
 			for _, tag := range item.Tags {
-				if tag.TagID == *tagID {
+				if tag.ID == *tagID {
 					hasTag = true
 					break
 				}
 			}
 			if !hasTag {
-				t.Errorf("news %d (%s) does not have tag %d", item.NewsID, item.Title, *tagID)
+				t.Errorf("news %d (%s) does not have tag %d", item.ID, item.Title, *tagID)
 			}
 		}
 	})
@@ -199,11 +199,11 @@ func TestManager_NewsByFilter_Integration(t *testing.T) {
 
 		seen := make(map[int]struct{}, 6)
 		for _, n := range page1 {
-			seen[n.NewsID] = struct{}{}
+			seen[n.ID] = struct{}{}
 		}
 		for _, n := range page2 {
-			if _, ok := seen[n.NewsID]; ok {
-				t.Fatalf("news %d appears on both pages", n.NewsID)
+			if _, ok := seen[n.ID]; ok {
+				t.Fatalf("news %d appears on both pages", n.ID)
 			}
 		}
 	})
@@ -222,11 +222,11 @@ func TestManager_NewsByFilter_Integration(t *testing.T) {
 			if len(item.Tags) > 0 {
 				hasNewsWithTags = true
 				for _, tag := range item.Tags {
-					if tag.TagID == 0 {
-						t.Errorf("news %d has tag with zero TagID", item.NewsID)
-					}
+					if tag.ID == 0 {
+						t.Errorf("news %d has tag with zero TagID", item.ID)
+					}	
 					if tag.Title == "" {
-						t.Errorf("news %d has tag with empty Title", item.NewsID)
+						t.Errorf("news %d has tag with empty Title", item.ID)
 					}
 				}
 			}
@@ -277,7 +277,7 @@ func TestManager_NewsByID_Integration(t *testing.T) {
 			t.Fatalf("no news items available for testing")
 		}
 
-		newsID := allNews[0].NewsID
+		newsID := allNews[0].ID
 		news, err := manager.NewsByID(ctx, newsID)
 		if err != nil {
 			t.Fatalf("NewsByID: %v", err)
@@ -286,7 +286,7 @@ func TestManager_NewsByID_Integration(t *testing.T) {
 			t.Fatalf("expected news, got nil")
 		}
 		assertNewsValid(t, news, newsID)
-		if news.Content == "" {
+		if *news.Content == "" {
 			t.Error("expected content to be present")
 		}
 	})
@@ -324,7 +324,7 @@ func TestManager_NewsByID_Integration(t *testing.T) {
 			t.Skip("no news with tags found for testing")
 		}
 
-		news, err := manager.NewsByID(ctx, newsWithTags.NewsID)
+		news, err := manager.NewsByID(ctx, newsWithTags.ID)
 		if err != nil {
 			t.Fatalf("NewsByID: %v", err)
 		}
@@ -336,7 +336,7 @@ func TestManager_NewsByID_Integration(t *testing.T) {
 			t.Error("expected tags to be attached")
 		}
 		for _, tag := range news.Tags {
-			if tag.TagID == 0 {
+			if tag.ID == 0 {
 				t.Errorf("tag has zero TagID")
 			}
 			if tag.Title == "" {
@@ -394,7 +394,7 @@ func TestManager_TagsByIds_Integration(t *testing.T) {
 	_, ctx, manager := withTx(t)
 
 	t.Run("ReturnsTagsForValidIds", func(t *testing.T) {
-		tagIDs := []int32{1, 2, 3}
+		tagIDs := []int{1, 2, 3}
 		tags, err := manager.TagsByIds(ctx, tagIDs)
 		if err != nil {
 			t.Fatalf("TagsByIds: %v", err)
@@ -421,7 +421,7 @@ func TestManager_TagsByIds_Integration(t *testing.T) {
 	})
 
 	t.Run("HandlesNonExistentTagIds", func(t *testing.T) {
-		tagIDs := []int32{99999, 99998}
+		tagIDs := []int{99999, 99998}
 		tags, err := manager.TagsByIds(ctx, tagIDs)
 		if err != nil {
 			t.Fatalf("TagsByIds non-existent: %v", err)
@@ -442,7 +442,7 @@ func intPtr(i int) *int { return &i }
 func assertNewsBasic(t *testing.T, news *News) {
 	t.Helper()
 
-	if news.NewsID == 0 {
+	if news.ID == 0 {
 		t.Fatalf("invalid NewsID")
 	}
 	if news.Title == "" {
@@ -451,7 +451,7 @@ func assertNewsBasic(t *testing.T, news *News) {
 	if news.CategoryID == 0 {
 		t.Fatalf("invalid CategoryID")
 	}
-	if news.Category.CategoryID == 0 {
+	if news.Category.ID == 0 {
 		t.Fatalf("category not loaded")
 	}
 	if news.PublishedAt.After(db.BaseTime.Add(365 * 24 * time.Hour)) {
@@ -464,13 +464,13 @@ func assertNewsValid(t *testing.T, news *News, newsID int) {
 	if news == nil {
 		t.Fatalf("news is nil")
 	}
-	if news.NewsID != newsID {
-		t.Fatalf("expected NewsID %d, got %d", newsID, news.NewsID)
+	if news.ID != newsID {
+		t.Fatalf("expected NewsID %d, got %d", newsID, news.ID)
 	}
 	if news.Title == "" {
 		t.Fatalf("empty Title")
 	}
-	if news.Content == "" {
+	if *news.Content == "" {
 		t.Fatalf("empty Content")
 	}
 	if news.Author == "" {
@@ -479,14 +479,14 @@ func assertNewsValid(t *testing.T, news *News, newsID int) {
 	if news.CategoryID == 0 {
 		t.Fatalf("invalid CategoryID")
 	}
-	if news.Category.CategoryID == 0 {
+	if news.Category.ID == 0 {
 		t.Fatalf("category not loaded")
 	}
 }
 
 func assertCategoryValid(t *testing.T, category Category) {
 	t.Helper()
-	if category.CategoryID == 0 {
+	if category.ID == 0 {
 		t.Fatalf("invalid CategoryID")
 	}
 	if category.Title == "" {
@@ -499,7 +499,7 @@ func assertCategoryValid(t *testing.T, category Category) {
 
 func assertTagValid(t *testing.T, tag Tag) {
 	t.Helper()
-	if tag.TagID == 0 {
+	if tag.ID == 0 {
 		t.Fatalf("invalid TagID")
 	}
 	if tag.Title == "" {

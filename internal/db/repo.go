@@ -163,7 +163,7 @@ func (r *Repository) Tags(ctx context.Context) ([]Tag, error) {
 	return tags, nil
 }
 
-func (r *Repository) TagsByIDs(ctx context.Context, tagIds []int32) ([]Tag, error) {
+func (r *Repository) TagsByIDs(ctx context.Context, tagIds []int) ([]Tag, error) {
 	if len(tagIds) == 0 {
 		return []Tag{}, nil
 	}

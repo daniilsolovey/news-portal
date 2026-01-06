@@ -2,42 +2,31 @@ package rest
 
 import "github.com/daniilsolovey/news-portal/internal/newsportal"
 
-func newCategory(c newsportal.Category) Category {
-	return Category{
-		CategoryID: c.CategoryID,
-		Title:      c.Title,
-	}
-}
-
-func newTag(t newsportal.Tag) Tag {
-	return Tag{
-		TagID:    t.TagID,
-		Title:    t.Title,
-		StatusID: t.StatusID,
-	}
-}
-
-func newTags(tags []newsportal.Tag) []Tag {
-	if len(tags) == 0 {
-		return nil
-	}
-	result := make([]Tag, len(tags))
-	for i := range tags {
-		result[i] = newTag(tags[i])
+func Map[From, To any](list []From, converter func(From) To) []To {
+	result := make([]To, len(list))
+	for i := range list {
+		result[i] = converter(list[i])
 	}
 	return result
 }
 
+func newCategory(c newsportal.Category) Category {
+	return Category{
+		CategoryID: c.ID,
+		Title:      c.Title,
+	}
+}
+
 func NewNews(n newsportal.News) News {
 	news := News{
-		NewsID:      n.NewsID,
+		NewsID:      n.ID,
 		CategoryID:  n.CategoryID,
 		Title:       n.Title,
-		Content:     n.Content,
+		Content:     *n.Content,
 		Author:      n.Author,
 		PublishedAt: n.PublishedAt,
-		Category:    newCategory(n.Category),
-		Tags:        newTags(n.Tags),
+		Category:    NewCategory(n.Category),
+		Tags:        NewTags(n.Tags),
 	}
 
 	return news
@@ -45,14 +34,14 @@ func NewNews(n newsportal.News) News {
 
 func NewNewsSummary(n newsportal.News) News {
 	summary := News{
-		NewsID:      n.NewsID,
+		NewsID:      n.ID,
 		CategoryID:  n.CategoryID,
 		Title:       n.Title,
 		Author:      n.Author,
 		PublishedAt: n.PublishedAt,
-		Content:     n.Content,
-		Category:    newCategory(n.Category),
-		Tags:        newTags(n.Tags),
+		Content:     *n.Content,
+		Category:    NewCategory(n.Category),
+		Tags:        NewTags(n.Tags),
 	}
 
 	return summary
@@ -63,5 +52,9 @@ func NewCategory(c newsportal.Category) Category {
 }
 
 func NewTag(t newsportal.Tag) Tag {
-	return newTag(t)
+	return Tag{
+		TagID:    t.ID,
+		Title:    t.Title,
+		StatusID: t.StatusID,
+	}
 }
