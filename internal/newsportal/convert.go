@@ -65,16 +65,14 @@ func NewNews(n db.News) News {
 	news.Tags = make([]Tag, len(n.TagIDs))
 	for i := range n.TagIDs {
 		news.Tags[i] = NewTag(db.Tag{
-			ID:       n.TagIDs[i],
-			StatusID: n.StatusID,
-			Title:    n.Title,
+			ID: n.TagIDs[i],
 		})
 	}
 
 	return news
 }
 
-func (u *Manager) attachTagsBatch(ctx context.Context, news []News) ([]News, error) {
+func (u *Manager) fillTags(ctx context.Context, news []News) ([]News, error) {
 	if len(news) == 0 {
 		return news, nil
 	}

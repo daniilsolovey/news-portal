@@ -28,7 +28,7 @@ func (u *Manager) NewsByFilter(ctx context.Context, tagID, categoryID *int, page
 
 	newsList := NewNewsList(dbNews)
 
-	result, err := u.attachTagsBatch(ctx, newsList)
+	result, err := u.fillTags(ctx, newsList)
 	if err != nil {
 		return nil, fmt.Errorf("failed to attach tags to news: %w", err)
 	}
@@ -55,7 +55,7 @@ func (u *Manager) NewsByID(ctx context.Context, newsID int) (*News, error) {
 
 	newsList := NewNewsList([]db.News{*dbNews})
 
-	result, err := u.attachTagsBatch(ctx, newsList)
+	result, err := u.fillTags(ctx, newsList)
 	if err != nil {
 		return nil, fmt.Errorf("failed to attach tags to news: %w", err)
 	}
@@ -78,15 +78,8 @@ func (u *Manager) Tags(ctx context.Context) ([]Tag, error) {
 func (u *Manager) TagsByIds(ctx context.Context, newsIDs []int32) ([]Tag, error) {
 	list, err := u.db.TagsByIDs(ctx, newsIDs)
 	if err != nil {
-		return nil, fmt.Errorf("db get tags by ids: %w", err)
-	} else if list == nil {
-		return nil, nil
+		return nil, err
 	}
 
-	tags := make([]Tag, len(list))
-	for i := range list {
-		tags[i] = NewTag(list[i])
-	}
-
-	return tags, nil
+	return NewTags(list), nil
 }

@@ -1,7 +1,6 @@
 package rest
 
 import (
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -15,6 +14,20 @@ const (
 	defaultPageSize = 10
 	maxPageSize     = 100
 )
+
+// NewsRequest represents query parameters for News endpoint
+type NewsRequest struct {
+	TagID      *int `query:"tagId"`
+	CategoryID *int `query:"categoryId"`
+	Page       *int `query:"page"`
+	PageSize   *int `query:"pageSize"`
+}
+
+// NewsCountRequest represents query parameters for NewsCount endpoint
+type NewsCountRequest struct {
+	TagID      *int `query:"tagId"`
+	CategoryID *int `query:"categoryId"`
+}
 
 // NewsHandler handles HTTP requests
 type NewsHandler struct {
@@ -43,59 +56,48 @@ func NewNewsHandler(uc *newsportal.Manager, log *slog.Logger) *NewsHandler {
 // @Failure 400,500 {object} map[string]string
 // @Router /api/v1/all_news [get]
 func (h *NewsHandler) News(c echo.Context) error {
+	var req NewsRequest
+	if err := c.Bind(&req); err != nil {
+		h.log.Warn("News: failed to bind request", "error", err)
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request parameters"})
+	}
+
 	h.log.Info("News request",
-		"tagId", c.QueryParam("tagId"),
-		"categoryId", c.QueryParam("categoryId"),
-		"page", c.QueryParam("page"),
-		"pageSize", c.QueryParam("pageSize"),
+		"tagId", req.TagID,
+		"categoryId", req.CategoryID,
+		"page", req.Page,
+		"pageSize", req.PageSize,
 	)
 
-	tagID, err := parseOptionalInt(c.QueryParam("tagId"))
-	if err != nil {
-		h.log.Warn("News: invalid tagId", "tagId", c.QueryParam("tagId"), "error", err)
-		return c.JSON(
-			http.StatusBadRequest,
-			map[string]string{"error": "invalid tagId"},
-		)
+	page := defaultPage
+	if req.Page != nil {
+		if *req.Page <= 0 {
+			h.log.Warn("News: invalid page", "page", *req.Page)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid page"})
+		}
+		page = *req.Page
 	}
 
-	categoryID, err := parseOptionalInt(c.QueryParam("categoryId"))
-	if err != nil {
-		h.log.Warn("News: invalid categoryId", "categoryId", c.QueryParam("categoryId"), "error", err)
-		return c.JSON(
-			http.StatusBadRequest,
-			map[string]string{"error": "invalid categoryId"},
-		)
+	pageSize := defaultPageSize
+	if req.PageSize != nil {
+		if *req.PageSize <= 0 {
+			h.log.Warn("News: invalid pageSize", "pageSize", *req.PageSize)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid pageSize"})
+		}
+		pageSize = *req.PageSize
+		if pageSize > maxPageSize {
+			pageSize = maxPageSize
+		}
 	}
 
-	page, err := parsePositiveIntOrDefault(c.QueryParam("page"), defaultPage)
-	if err != nil {
-		h.log.Warn("News: invalid page", "page", c.QueryParam("page"), "error", err)
-		return c.JSON(http.StatusBadRequest,
-			map[string]string{"error": "invalid page"},
-		)
-	}
-
-	pageSize, err := parsePositiveIntOrDefault(c.QueryParam("pageSize"), defaultPageSize)
-	if err != nil {
-		h.log.Warn("News: invalid pageSize", "pageSize", c.QueryParam("pageSize"), "error", err)
-		return c.JSON(http.StatusBadRequest,
-			map[string]string{"error": "invalid pageSize"},
-		)
-	}
-
-	if pageSize > maxPageSize {
-		pageSize = maxPageSize
-	}
-
-	newsportalSummaries, err := h.uc.NewsByFilter(c.Request().Context(), tagID,
-		categoryID, page, pageSize,
+	newsportalSummaries, err := h.uc.NewsByFilter(c.Request().Context(), req.TagID,
+		req.CategoryID, page, pageSize,
 	)
 	if err != nil {
 		h.log.Error("News: failed to get all news",
 			"error", err,
-			"tagId", tagID,
-			"categoryId", categoryID,
+			"tagId", req.TagID,
+			"categoryId", req.CategoryID,
 			"page", page,
 			"pageSize", pageSize,
 		)
@@ -109,8 +111,8 @@ func (h *NewsHandler) News(c echo.Context) error {
 
 	h.log.Info("News: success",
 		"count", len(summaries),
-		"tagId", tagID,
-		"categoryId", categoryID,
+		"tagId", req.TagID,
+		"categoryId", req.CategoryID,
 		"page", page,
 		"pageSize", pageSize,
 	)
@@ -129,33 +131,23 @@ func (h *NewsHandler) News(c echo.Context) error {
 // @Failure 400,500 {object} map[string]string
 // @Router /api/v1/count [get]
 func (h *NewsHandler) NewsCount(c echo.Context) error {
+	var req NewsCountRequest
+	if err := c.Bind(&req); err != nil {
+		h.log.Warn("NewsCount: failed to bind request", "error", err)
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request parameters"})
+	}
+
 	h.log.Info("NewsCount request",
-		"tagId", c.QueryParam("tagId"),
-		"categoryId", c.QueryParam("categoryId"),
+		"tagId", req.TagID,
+		"categoryId", req.CategoryID,
 	)
 
-	tagID, err := parseOptionalInt(c.QueryParam("tagId"))
-	if err != nil {
-		h.log.Warn("NewsCount: invalid tagId", "tagId", c.QueryParam("tagId"), "error", err)
-		return c.JSON(http.StatusBadRequest,
-			map[string]string{"error": "invalid tagId"},
-		)
-	}
-
-	categoryID, err := parseOptionalInt(c.QueryParam("categoryId"))
-	if err != nil {
-		h.log.Warn("NewsCount: invalid categoryId", "categoryId", c.QueryParam("categoryId"), "error", err)
-		return c.JSON(http.StatusBadRequest,
-			map[string]string{"error": "invalid categoryId"},
-		)
-	}
-
-	count, err := h.uc.NewsCount(c.Request().Context(), tagID, categoryID)
+	count, err := h.uc.NewsCount(c.Request().Context(), req.TagID, req.CategoryID)
 	if err != nil {
 		h.log.Error("NewsCount: failed to get news count",
 			"error", err,
-			"tagId", tagID,
-			"categoryId", categoryID,
+			"tagId", req.TagID,
+			"categoryId", req.CategoryID,
 		)
 		return c.JSON(http.StatusInternalServerError,
 			map[string]string{"error": "internal error"},
@@ -164,8 +156,8 @@ func (h *NewsHandler) NewsCount(c echo.Context) error {
 
 	h.log.Info("NewsCount: success",
 		"count", count,
-		"tagId", tagID,
-		"categoryId", categoryID,
+		"tagId", req.TagID,
+		"categoryId", req.CategoryID,
 	)
 
 	return c.JSON(http.StatusOK, count)
@@ -274,28 +266,4 @@ func (h *NewsHandler) Tags(c echo.Context) error {
 	h.log.Info("Tags: success", "count", len(tags))
 
 	return c.JSON(http.StatusOK, tags)
-}
-
-func parseOptionalInt(s string) (*int, error) {
-	if s == "" {
-		return nil, nil
-	}
-
-	v, err := strconv.Atoi(s)
-	if err != nil {
-		return nil, err
-	}
-
-	return &v, nil
-}
-
-func parsePositiveIntOrDefault(s string, def int) (int, error) {
-	if s == "" {
-		return def, nil
-	}
-	v, err := strconv.Atoi(s)
-	if err != nil || v <= 0 {
-		return 0, fmt.Errorf("must be positive int")
-	}
-	return v, nil
 }

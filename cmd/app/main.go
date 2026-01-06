@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -9,12 +10,10 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/go-pg/pg/v10"
-	"github.com/namsral/flag"
-
 	"github.com/daniilsolovey/news-portal/config"
 	_ "github.com/daniilsolovey/news-portal/docs"
 	"github.com/daniilsolovey/news-portal/internal/app"
+	"github.com/go-pg/pg/v10"
 )
 
 var (

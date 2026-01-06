@@ -45,6 +45,14 @@ func (r *Repository) Close() error {
 	return nil
 }
 
+func applyPublishedNewsFilters(query *pg.Query) *pg.Query {
+	now := time.Now()
+	return query.
+		Where(`"t".? = ?`, pg.Ident(Columns.News.StatusID), StatusPublished).
+		Where(`"category".? = ?`, pg.Ident(Columns.Category.StatusID), StatusPublished).
+		Where(`"t".? < ?`, pg.Ident(Columns.News.PublishedAt), now)
+}
+
 // News retrieves news with optional filtering by tagID and categoryID, with pagination
 // Results are sorted by publishedAt DESC and include full category and tags information
 // Content field is not included in the result (empty string)
@@ -60,25 +68,21 @@ func (r *Repository) News(ctx context.Context, tagID, categoryID *int,
 
 	offset := (page - 1) * pageSize
 
-	now := time.Now()
-
 	var news []News
 	query := r.db.ModelContext(ctx, &news).
-		Relation("Category").
-		Where(`"t"."statusId" = ?`, StatusPublished).
-		Where(`"category"."statusId" = ?`, StatusPublished).
-		Where(`"t"."publishedAt" < ?`, now)
+		Relation(Columns.News.Category)
+	query = applyPublishedNewsFilters(query)
 
 	if categoryID != nil {
-		query = query.Where(`"t"."categoryId" = ?`, *categoryID)
+		query = query.Where(`"t".? = ?`, pg.Ident(Columns.News.CategoryID), *categoryID)
 	}
 
 	if tagID != nil {
-		query = query.Where(`? = ANY("t"."tagIds")`, *tagID)
+		query = query.Where(`? = ANY("t".?)`, *tagID, pg.Ident(Columns.News.TagIDs))
 	}
 
 	err := query.
-		OrderExpr(`"t"."publishedAt" DESC`).
+		OrderExpr(`"t".? DESC`, pg.Ident(Columns.News.PublishedAt)).
 		Limit(pageSize).
 		Offset(offset).
 		Select()
@@ -91,14 +95,18 @@ func (r *Repository) News(ctx context.Context, tagID, categoryID *int,
 }
 
 func (r *Repository) NewsCount(ctx context.Context, tagID, categoryID *int) (int, error) {
-	query := r.db.ModelContext(ctx, (*News)(nil))
+	var news []News
+
+	query := r.db.ModelContext(ctx, &news).
+		Relation(Columns.News.Category)
+	query = applyPublishedNewsFilters(query)
 
 	if categoryID != nil {
-		query = query.Where(`"t"."categoryId" = ?`, *categoryID)
+		query = query.Where(`"t".? = ?`, pg.Ident(Columns.News.CategoryID), *categoryID)
 	}
 
 	if tagID != nil {
-		query = query.Where(`? = ANY("t"."tagIds")`, *tagID)
+		query = query.Where(`? = ANY("t".?)`, *tagID, pg.Ident(Columns.News.TagIDs))
 	}
 
 	count, err := query.Count()
@@ -110,14 +118,12 @@ func (r *Repository) NewsCount(ctx context.Context, tagID, categoryID *int) (int
 }
 
 func (r *Repository) NewsByID(ctx context.Context, newsID int) (*News, error) {
-	now := time.Now()
 	news := &News{}
-	err := r.db.ModelContext(ctx, news).
-		Relation("Category").
-		Where(`"t"."statusId" = ?`, StatusPublished).
-		Where(`"category"."statusId" = ?`, StatusPublished).
-		Where(`"t"."publishedAt" < ?`, now).
-		Where(`"t"."newsId" = ?`, newsID).
+	query := r.db.ModelContext(ctx, news).
+		Relation("Category")
+	query = applyPublishedNewsFilters(query)
+	err := query.
+		Where(`"t".? = ?`, pg.Ident(Columns.News.ID), newsID).
 		Select()
 
 	if errors.Is(err, pg.ErrNoRows) {
@@ -132,8 +138,8 @@ func (r *Repository) NewsByID(ctx context.Context, newsID int) (*News, error) {
 func (r *Repository) Categories(ctx context.Context) ([]Category, error) {
 	var category []Category
 	err := r.db.ModelContext(ctx, &category).
-		Where(`"statusId" = ?`, StatusPublished).
-		OrderExpr(`"orderNumber" ASC`).
+		Where(`"t".? = ?`, pg.Ident(Columns.Category.StatusID), StatusPublished).
+		OrderExpr(`"t".? ASC`, pg.Ident(Columns.Category.OrderNumber)).
 		Select()
 
 	if err != nil {
@@ -146,8 +152,8 @@ func (r *Repository) Categories(ctx context.Context) ([]Category, error) {
 func (r *Repository) Tags(ctx context.Context) ([]Tag, error) {
 	var tags []Tag
 	err := r.db.ModelContext(ctx, &tags).
-		Where(`"statusId" = ?`, StatusPublished).
-		OrderExpr(`"title" ASC`).
+		Where(`"t".? = ?`, pg.Ident(Columns.Tag.StatusID), StatusPublished).
+		OrderExpr(`"t".? ASC`, pg.Ident(Columns.Tag.Title)).
 		Select()
 
 	if err != nil {
@@ -164,9 +170,9 @@ func (r *Repository) TagsByIDs(ctx context.Context, tagIds []int32) ([]Tag, erro
 
 	tags := []Tag{}
 	err := r.db.ModelContext(ctx, &tags).
-		Where(`"tagId" IN (?)`, pg.In(tagIds)).
-		Where(`"statusId" = ?`, StatusPublished).
-		OrderExpr(`"title" ASC`).
+		Where(`"t".? IN (?)`, pg.Ident(Columns.Tag.ID), pg.In(tagIds)).
+		Where(`"t".? = ?`, pg.Ident(Columns.Tag.StatusID), StatusPublished).
+		OrderExpr(`"t".? ASC`, pg.Ident(Columns.Tag.Title)).
 		Select()
 
 	if err != nil {
