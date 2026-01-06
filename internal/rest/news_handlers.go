@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -15,7 +16,6 @@ const (
 	maxPageSize     = 100
 )
 
-// NewsRequest represents query parameters for News endpoint
 type NewsRequest struct {
 	TagID      *int `query:"tagId"`
 	CategoryID *int `query:"categoryId"`
@@ -23,24 +23,25 @@ type NewsRequest struct {
 	PageSize   *int `query:"pageSize"`
 }
 
-// NewsCountRequest represents query parameters for NewsCount endpoint
 type NewsCountRequest struct {
 	TagID      *int `query:"tagId"`
 	CategoryID *int `query:"categoryId"`
 }
 
-// NewsHandler handles HTTP requests
 type NewsHandler struct {
 	uc  *newsportal.Manager
 	log *slog.Logger
 }
 
-// NewNewsHandler creates a new instance of NewsHandler
 func NewNewsHandler(uc *newsportal.Manager, log *slog.Logger) *NewsHandler {
 	return &NewsHandler{
 		uc:  uc,
 		log: log,
 	}
+}
+
+func (h *NewsHandler) handleError(c echo.Context, err error, statusCode int, message string) error {
+	return c.JSON(statusCode, map[string]string{"error": message})
 }
 
 // News handles GET /api/v1/all_news
@@ -58,75 +59,22 @@ func NewNewsHandler(uc *newsportal.Manager, log *slog.Logger) *NewsHandler {
 func (h *NewsHandler) News(c echo.Context) error {
 	var req NewsRequest
 	if err := c.Bind(&req); err != nil {
-		h.log.Warn("News: failed to bind request", "error", err)
-		// Check which specific parameter is invalid
-		if tagIdStr := c.QueryParam("tagId"); tagIdStr != "" {
-			if _, parseErr := strconv.Atoi(tagIdStr); parseErr != nil {
-				return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid tagId"})
-			}
-		}
-		if categoryIdStr := c.QueryParam("categoryId"); categoryIdStr != "" {
-			if _, parseErr := strconv.Atoi(categoryIdStr); parseErr != nil {
-				return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid categoryId"})
-			}
-		}
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request parameters"})
+		return h.handleError(c, err, http.StatusBadRequest, "invalid request parameters")
 	}
 
-	h.log.Info("News request",
-		"tagId", req.TagID,
-		"categoryId", req.CategoryID,
-		"page", req.Page,
-		"pageSize", req.PageSize,
-	)
-
-	page := defaultPage
-	if req.Page != nil {
-		if *req.Page <= 0 {
-			h.log.Warn("News: invalid page", "page", *req.Page)
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid page"})
-		}
-		page = *req.Page
+	page, pageSize, err := validatePagination(req.Page, req.PageSize)
+	if err != nil {
+		return h.handleError(c, err, http.StatusBadRequest, "invalid pagination parameters")
 	}
 
-	pageSize := defaultPageSize
-	if req.PageSize != nil {
-		if *req.PageSize <= 0 {
-			h.log.Warn("News: invalid pageSize", "pageSize", *req.PageSize)
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid pageSize"})
-		}
-		pageSize = *req.PageSize
-		if pageSize > maxPageSize {
-			pageSize = maxPageSize
-		}
-	}
-
-	newsportalSummaries, err := h.uc.NewsByFilter(c.Request().Context(), req.TagID,
-		req.CategoryID, page, pageSize,
+	newsportalSummaries, err := h.uc.NewsByFilter(
+		c.Request().Context(), req.TagID, req.CategoryID, page, pageSize,
 	)
 	if err != nil {
-		h.log.Error("News: failed to get all news",
-			"error", err,
-			"tagId", req.TagID,
-			"categoryId", req.CategoryID,
-			"page", page,
-			"pageSize", pageSize,
-		)
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return h.handleError(c, err, http.StatusInternalServerError, "internal error")
 	}
 
-	summaries := make([]News, len(newsportalSummaries))
-	for i := range newsportalSummaries {
-		summaries[i] = NewNewsSummary(newsportalSummaries[i])
-	}
-
-	h.log.Info("News: success",
-		"count", len(summaries),
-		"tagId", req.TagID,
-		"categoryId", req.CategoryID,
-		"page", page,
-		"pageSize", pageSize,
-	)
+	summaries := Map(newsportalSummaries, NewNewsSummary)
 
 	return c.JSON(http.StatusOK, summaries)
 }
@@ -144,43 +92,13 @@ func (h *NewsHandler) News(c echo.Context) error {
 func (h *NewsHandler) NewsCount(c echo.Context) error {
 	var req NewsCountRequest
 	if err := c.Bind(&req); err != nil {
-		h.log.Warn("NewsCount: failed to bind request", "error", err)
-		// Check which specific parameter is invalid
-		if tagIdStr := c.QueryParam("tagId"); tagIdStr != "" {
-			if _, parseErr := strconv.Atoi(tagIdStr); parseErr != nil {
-				return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid tagId"})
-			}
-		}
-		if categoryIdStr := c.QueryParam("categoryId"); categoryIdStr != "" {
-			if _, parseErr := strconv.Atoi(categoryIdStr); parseErr != nil {
-				return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid categoryId"})
-			}
-		}
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request parameters"})
+		return h.handleError(c, err, http.StatusBadRequest, "invalid request parameters")
 	}
-
-	h.log.Info("NewsCount request",
-		"tagId", req.TagID,
-		"categoryId", req.CategoryID,
-	)
 
 	count, err := h.uc.NewsCount(c.Request().Context(), req.TagID, req.CategoryID)
 	if err != nil {
-		h.log.Error("NewsCount: failed to get news count",
-			"error", err,
-			"tagId", req.TagID,
-			"categoryId", req.CategoryID,
-		)
-		return c.JSON(http.StatusInternalServerError,
-			map[string]string{"error": "internal error"},
-		)
+		return h.handleError(c, err, http.StatusInternalServerError, "internal error")
 	}
-
-	h.log.Info("NewsCount: success",
-		"count", count,
-		"tagId", req.TagID,
-		"categoryId", req.CategoryID,
-	)
 
 	return c.JSON(http.StatusOK, count)
 }
@@ -196,40 +114,24 @@ func (h *NewsHandler) NewsCount(c echo.Context) error {
 // @Router /api/v1/news/{id} [get]
 func (h *NewsHandler) NewsByID(c echo.Context) error {
 	idStr := c.Param("id")
-	h.log.Info("NewsByID request", "id", idStr)
-
 	if idStr == "" {
-		h.log.Warn("NewsByID: empty id")
-		return c.JSON(http.StatusBadRequest,
-			map[string]string{"error": "invalid id"},
-		)
+		return h.handleError(c, nil, http.StatusBadRequest, "invalid id")
 	}
 
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		h.log.Warn("NewsByID: invalid id format", "id", idStr, "error", err)
-		return c.JSON(http.StatusBadRequest,
-			map[string]string{"error": "invalid id"},
-		)
+		return h.handleError(c, err, http.StatusBadRequest, "invalid id")
 	}
 
 	newsportalNews, err := h.uc.NewsByID(c.Request().Context(), id)
 	if err != nil {
-		h.log.Error("NewsByID: failed to get news by ID",
-			"error", err,
-			"id", id,
-		)
-		return err
-	} else if newsportalNews == nil {
-		h.log.Info("NewsByID: news not found", "id", id)
+		return h.handleError(c, err, http.StatusInternalServerError, "internal error")
+	}
+	if newsportalNews == nil {
 		return c.String(http.StatusNotFound, "news not found")
 	}
 
-	news := NewNews(*newsportalNews)
-
-	h.log.Info("NewsByID: success", "id", id, "title", newsportalNews.Title)
-
-	return c.JSON(http.StatusOK, news)
+	return c.JSON(http.StatusOK, NewNews(*newsportalNews))
 }
 
 // Categories handles GET /api/v1/categories
@@ -241,24 +143,13 @@ func (h *NewsHandler) NewsByID(c echo.Context) error {
 // @Failure 500 {object} map[string]string
 // @Router /api/v1/categories [get]
 func (h *NewsHandler) Categories(c echo.Context) error {
-	h.log.Info("Categories request")
-
-	newsportalCategories, err := h.uc.Categories(c.Request().Context())
+	categories, err := h.uc.Categories(c.Request().Context())
 	if err != nil {
-		h.log.Error("Categories: failed to get all categories", "error", err)
-		return c.JSON(http.StatusInternalServerError,
-			map[string]string{"error": "internal error"},
-		)
+		return h.handleError(c, err, http.StatusInternalServerError, "internal error")
 	}
 
-	categories := make([]Category, len(newsportalCategories))
-	for i := range newsportalCategories {
-		categories[i] = NewCategory(newsportalCategories[i])
-	}
-
-	h.log.Info("Categories: success", "count", len(categories))
-
-	return c.JSON(http.StatusOK, categories)
+	result := NewCategories(categories)
+	return c.JSON(http.StatusOK, result)
 }
 
 // Tags handles GET /api/v1/tags
@@ -270,22 +161,34 @@ func (h *NewsHandler) Categories(c echo.Context) error {
 // @Failure 500 {object} map[string]string
 // @Router /api/v1/tags [get]
 func (h *NewsHandler) Tags(c echo.Context) error {
-	h.log.Info("Tags request")
-
-	newsportalTags, err := h.uc.Tags(c.Request().Context())
+	tags, err := h.uc.Tags(c.Request().Context())
 	if err != nil {
-		h.log.Error("Tags: failed to get all tags", "error", err)
-		return c.JSON(http.StatusInternalServerError,
-			map[string]string{"error": "internal error"},
-		)
+		return h.handleError(c, err, http.StatusInternalServerError, "internal error")
 	}
 
-	tags := make([]Tag, len(newsportalTags))
-	for i := range newsportalTags {
-		tags[i] = NewTag(newsportalTags[i])
+	result := NewTags(tags)
+	return c.JSON(http.StatusOK, result)
+}
+
+func validatePagination(page, pageSize *int) (int, int, error) {
+	p := defaultPage
+	if page != nil {
+		if *page <= 0 {
+			return 0, 0, errors.New("invalid page")
+		}
+		p = *page
 	}
 
-	h.log.Info("Tags: success", "count", len(tags))
+	ps := defaultPageSize
+	if pageSize != nil {
+		if *pageSize <= 0 {
+			return 0, 0, errors.New("invalid pageSize")
+		}
+		ps = *pageSize
+		if ps > maxPageSize {
+			ps = maxPageSize
+		}
+	}
 
-	return c.JSON(http.StatusOK, tags)
+	return p, ps, nil
 }

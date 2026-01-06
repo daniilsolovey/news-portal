@@ -10,13 +10,6 @@ func Map[From, To any](list []From, converter func(From) To) []To {
 	return result
 }
 
-func newCategory(c newsportal.Category) Category {
-	return Category{
-		CategoryID: c.ID,
-		Title:      c.Title,
-	}
-}
-
 func NewNews(n newsportal.News) News {
 	news := News{
 		NewsID:      n.ID,
@@ -48,7 +41,10 @@ func NewNewsSummary(n newsportal.News) News {
 }
 
 func NewCategory(c newsportal.Category) Category {
-	return newCategory(c)
+	return Category{
+		CategoryID: c.ID,
+		Title:      c.Title,
+	}
 }
 
 func NewTag(t newsportal.Tag) Tag {
