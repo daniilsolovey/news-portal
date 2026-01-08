@@ -17,11 +17,6 @@ type Repository struct {
 	db pg.DBI
 }
 
-func New(db pg.DBI) *Repository {
-	return &Repository{
-		db: db,
-	}
-}
 
 func (r *Repository) Ping(ctx context.Context) error {
 	if db, ok := r.db.(*pg.DB); ok {

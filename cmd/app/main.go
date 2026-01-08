@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/daniilsolovey/news-portal/config"
 	_ "github.com/daniilsolovey/news-portal/docs"
 	"github.com/daniilsolovey/news-portal/internal/app"
 	"github.com/go-pg/pg/v10"
@@ -19,7 +18,7 @@ import (
 var (
 	flConfig = flag.String("config", "config.toml", "path to TOML configuration file")
 	flDebug  = flag.Bool("debug", false, "enable debug mode")
-	cfg      config.Config
+	cfg      app.Config
 	lg       *slog.Logger
 )
 
@@ -35,17 +34,13 @@ func main() {
 	lg = newLogger(*flDebug)
 
 	_, err := toml.DecodeFile(*flConfig, &cfg)
-	if err != nil {
-		exitOnError(err)
-	}
+	exitOnError(err)
 
 	db := pg.Connect(&cfg.Database)
-	if err := db.Ping(context.Background()); err != nil {
-		db.Close()
-		exitOnError(err)
-	}
+	err = db.Ping(context.Background())
+	exitOnError(err)
 
-	service := app.New(&cfg, db, lg)
+	service := app.New(cfg, db, lg)
 	ctx := context.Background()
 
 	quit := make(chan os.Signal, 1)

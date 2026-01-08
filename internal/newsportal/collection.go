@@ -7,10 +7,11 @@ package newsportal
 //colgen:Tag:Map(db),Index(ID)
 
 func (ll NewsList) SetTags(tags Tags) {
+	tagIndex := tags.IndexByID()
 	for i := range ll {
 		ll[i].Tags = make([]Tag, len(ll[i].TagIDs))
 		for j, tagID := range ll[i].TagIDs {
-			ll[i].Tags[j] = tags.IndexByID()[tagID]
+			ll[i].Tags[j] = tagIndex[tagID]
 		}
 	}
 }

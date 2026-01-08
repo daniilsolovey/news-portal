@@ -2,14 +2,6 @@ package rest
 
 import "github.com/daniilsolovey/news-portal/internal/newsportal"
 
-func Map[From, To any](list []From, converter func(From) To) []To {
-	result := make([]To, len(list))
-	for i := range list {
-		result[i] = converter(list[i])
-	}
-	return result
-}
-
 func NewNews(n newsportal.News) News {
 	news := News{
 		NewsID:      n.ID,
@@ -25,14 +17,13 @@ func NewNews(n newsportal.News) News {
 	return news
 }
 
-func NewNewsSummary(n newsportal.News) News {
-	summary := News{
+func NewNewsSummary(n newsportal.News) NewsSummary {
+	summary := NewsSummary{
 		NewsID:      n.ID,
 		CategoryID:  n.CategoryID,
 		Title:       n.Title,
 		Author:      n.Author,
 		PublishedAt: n.PublishedAt,
-		Content:     *n.Content,
 		Category:    NewCategory(n.Category),
 		Tags:        NewTags(n.Tags),
 	}

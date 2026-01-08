@@ -7,7 +7,7 @@ import (
 
 type Categories []Category
 
-func NewCategories(in []newsportal.Category) Categories { return Map(in, NewCategory) }
+func NewCategories(in []newsportal.Category) Categories { return newsportal.Map(in, NewCategory) }
 
 func (ll Categories) IndexByCategoryID() map[int]Category {
 	r := make(map[int]Category, len(ll))
@@ -19,7 +19,7 @@ func (ll Categories) IndexByCategoryID() map[int]Category {
 
 type NewsList []News
 
-func NewNewsList(in []newsportal.News) NewsList { return Map(in, NewNews) }
+func NewNewsList(in []newsportal.News) NewsList { return newsportal.Map(in, NewNews) }
 
 func (ll NewsList) IndexByNewsID() map[int]News {
 	r := make(map[int]News, len(ll))
@@ -29,9 +29,13 @@ func (ll NewsList) IndexByNewsID() map[int]News {
 	return r
 }
 
+type NewsSummaries []NewsSummary
+
+func NewNewsSummaries(in []newsportal.News) NewsSummaries { return newsportal.Map(in, NewNewsSummary) }
+
 type Tags []Tag
 
-func NewTags(in []newsportal.Tag) Tags { return Map(in, NewTag) }
+func NewTags(in []newsportal.Tag) Tags { return newsportal.Map(in, NewTag) }
 
 func (ll Tags) IndexByTagID() map[int]Tag {
 	r := make(map[int]Tag, len(ll))

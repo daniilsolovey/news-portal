@@ -72,3 +72,12 @@ swag:
 
 genna:
 	genna model -c "postgres://user:password@localhost:5432/news_portal?sslmode=disable" -o internal/db/model.go -t "public.*" -f
+
+mfd-xml:
+	@mfd-generator xml -c "postgres://user:password@localhost:5432/news_portal?sslmode=disable" -m ./docs/model/newsportal.mfd
+
+mfd-model:
+	@mfd-generator model -m ./docs/model/newsportal.mfd -p db -o ./internal/db
+
+mfd-repo:
+	@mfd-generator repo -m ./docs/model/newsportal.mfd -p db -o ./internal/db

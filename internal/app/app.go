@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 
-	"github.com/daniilsolovey/news-portal/config"
 	db "github.com/daniilsolovey/news-portal/internal/db"
 	"github.com/daniilsolovey/news-portal/internal/newsportal"
 	"github.com/daniilsolovey/news-portal/internal/rest"
@@ -14,12 +14,21 @@ import (
 )
 
 type App struct {
-	DB     *db.Repository
+	DB     db.DB
 	Logger *slog.Logger
 	Echo   *echo.Echo
+	Config Config
 }
 
-func New(cfg *config.Config, dbConnect *pg.DB, logger *slog.Logger) *App {
+type Config struct {
+	Database pg.Options
+	App      struct {
+		Host string
+		Port int
+	}
+}
+
+func New(cfg Config, dbConnect *pg.DB, logger *slog.Logger) *App {
 	database := db.New(dbConnect)
 	handler := rest.NewNewsHandler(
 		newsportal.NewNewsManager(database),
@@ -30,6 +39,7 @@ func New(cfg *config.Config, dbConnect *pg.DB, logger *slog.Logger) *App {
 		DB:     database,
 		Logger: logger,
 		Echo:   handler.RegisterRoutes(),
+		Config: cfg,
 	}
 }
 
@@ -39,5 +49,9 @@ func (a *App) Run(ctx context.Context, port int) error {
 }
 
 func (a *App) GracefulShutdown(ctx context.Context) error {
-	return a.Echo.Shutdown(ctx)
+	err := a.Echo.Shutdown(ctx)
+	if err == http.ErrServerClosed {
+		return nil
+	}
+	return err
 }

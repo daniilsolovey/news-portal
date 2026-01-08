@@ -41,6 +41,7 @@ func NewNewsHandler(uc *newsportal.Manager, log *slog.Logger) *NewsHandler {
 }
 
 func (h *NewsHandler) handleError(c echo.Context, err error, statusCode int, message string) error {
+	h.log.Error("handleError", "error", err, "statusCode", statusCode, "message", message)
 	return c.JSON(statusCode, map[string]string{"error": message})
 }
 
@@ -74,7 +75,7 @@ func (h *NewsHandler) News(c echo.Context) error {
 		return h.handleError(c, err, http.StatusInternalServerError, "internal error")
 	}
 
-	summaries := Map(newsportalSummaries, NewNewsSummary)
+	summaries := NewNewsSummaries(newsportalSummaries)
 
 	return c.JSON(http.StatusOK, summaries)
 }

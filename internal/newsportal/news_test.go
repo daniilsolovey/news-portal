@@ -86,7 +86,7 @@ func withTx(t *testing.T) (*pg.Tx, context.Context, *Manager) {
 		}
 	})
 
-	repo := db.New(tx)
+	repo := tx
 	manager := NewNewsManager(repo)
 	return tx, ctx, manager
 }
@@ -224,7 +224,7 @@ func TestManager_NewsByFilter_Integration(t *testing.T) {
 				for _, tag := range item.Tags {
 					if tag.ID == 0 {
 						t.Errorf("news %d has tag with zero TagID", item.ID)
-					}	
+					}
 					if tag.Title == "" {
 						t.Errorf("news %d has tag with empty Title", item.ID)
 					}

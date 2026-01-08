@@ -49,22 +49,22 @@ func NewNews(n db.News) News {
 	return news
 }
 
-func (u *Manager) fillTags(ctx context.Context, news NewsList) (NewsList, error) {
+func (u *Manager) fillTags(ctx context.Context, news NewsList) error {
 	if len(news) == 0 {
-		return news, nil
+		return nil
 	}
 
 	allTagIDs := news.UniqueTagIDs()
 	if len(allTagIDs) == 0 {
-		return news, nil
+		return nil
 	}
 
 	tags, err := u.TagsByIds(ctx, allTagIDs)
 	if err != nil {
-		return nil, fmt.Errorf("get tags by ids: %w", err)
+		return fmt.Errorf("get tags by ids: %w", err)
 	}
 
 	news.SetTags(tags)
 
-	return news, nil
+	return nil
 }
