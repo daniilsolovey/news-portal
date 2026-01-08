@@ -9,6 +9,8 @@ import (
 
 	"github.com/daniilsolovey/news-portal/internal/db"
 	"github.com/go-pg/pg/v10"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -76,9 +78,7 @@ func withTx(t *testing.T) (*pg.Tx, context.Context, *Manager) {
 	ctx := context.Background()
 
 	tx, err := testDB.Begin()
-	if err != nil {
-		t.Fatalf("failed to begin transaction: %v", err)
-	}
+	require.NoError(t, err, "failed to begin transaction")
 
 	t.Cleanup(func() {
 		if err := tx.Rollback(); err != nil {
@@ -91,22 +91,147 @@ func withTx(t *testing.T) (*pg.Tx, context.Context, *Manager) {
 	return tx, ctx, manager
 }
 
+// Helper functions for creating test data
+
+func createTestNews(t *testing.T, tx *pg.Tx, ctx context.Context, opts ...newsOption) *db.News {
+	t.Helper()
+
+	baseTime := db.BaseTime
+	content := "Test content"
+	news := &db.News{
+		CategoryID:  1,
+		Title:       "Test News",
+		Content:     &content,
+		Author:      "Test Author",
+		PublishedAt: baseTime.Add(-24 * time.Hour),
+		TagIDs:      []int{1},
+		StatusID:    StatusPublished,
+	}
+
+	for _, opt := range opts {
+		opt(news)
+	}
+
+	_, err := tx.ModelContext(ctx, news).Insert()
+	require.NoError(t, err, "failed to insert test news")
+
+	return news
+}
+
+type newsOption func(*db.News)
+
+func withCategoryID(categoryID int) newsOption {
+	return func(n *db.News) {
+		n.CategoryID = categoryID
+	}
+}
+
+func withStatusID(statusID int) newsOption {
+	return func(n *db.News) {
+		n.StatusID = statusID
+	}
+}
+
+func withPublishedAt(publishedAt time.Time) newsOption {
+	return func(n *db.News) {
+		n.PublishedAt = publishedAt
+	}
+}
+
+func withTitle(title string) newsOption {
+	return func(n *db.News) {
+		n.Title = title
+	}
+}
+
+func createTestCategory(t *testing.T, tx *pg.Tx, ctx context.Context, opts ...categoryOption) *db.Category {
+	t.Helper()
+
+	category := &db.Category{
+		Title:       "Test Category",
+		OrderNumber: 99,
+		StatusID:    StatusPublished,
+	}
+
+	for _, opt := range opts {
+		opt(category)
+	}
+
+	_, err := tx.ModelContext(ctx, category).Insert()
+	require.NoError(t, err, "failed to insert test category")
+
+	return category
+}
+
+type categoryOption func(*db.Category)
+
+func withCategoryStatusID(statusID int) categoryOption {
+	return func(c *db.Category) {
+		c.StatusID = statusID
+	}
+}
+
+func withCategoryTitle(title string) categoryOption {
+	return func(c *db.Category) {
+		c.Title = title
+	}
+}
+
+func createTestTag(t *testing.T, tx *pg.Tx, ctx context.Context, opts ...tagOption) *db.Tag {
+	t.Helper()
+
+	tag := &db.Tag{
+		Title:    "Test Tag",
+		StatusID: StatusPublished,
+	}
+
+	for _, opt := range opts {
+		opt(tag)
+	}
+
+	_, err := tx.ModelContext(ctx, tag).Insert()
+	require.NoError(t, err, "failed to insert test tag")
+
+	return tag
+}
+
+type tagOption func(*db.Tag)
+
+func withTagStatusID(statusID int) tagOption {
+	return func(t *db.Tag) {
+		t.StatusID = statusID
+	}
+}
+
+func withTagTitle(title string) tagOption {
+	return func(t *db.Tag) {
+		t.Title = title
+	}
+}
+
+// Helper to check if news has a specific tag
+func assertNewsHasTag(t *testing.T, news *News, tagID int) {
+	t.Helper()
+	hasTag := false
+	for _, tag := range news.Tags {
+		if tag.ID == tagID {
+			hasTag = true
+			break
+		}
+	}
+	assert.True(t, hasTag, "news %d (%s) should have tag %d", news.ID, news.Title, tagID)
+}
+
 func TestManager_NewsByFilter_Integration(t *testing.T) {
 	tx, ctx, manager := withTx(t)
 
 	t.Run("WithoutFiltersReturnsAllPublishedNews", func(t *testing.T) {
 		news, err := manager.NewsByFilter(ctx, nil, nil, intPtr(1), intPtr(10))
-		if err != nil {
-			t.Fatalf("NewsByFilter failed: %v", err)
-		}
-		if len(news) == 0 {
-			t.Error("expected to get news items, got empty result")
-		}
+		require.NoError(t, err)
+		require.NotEmpty(t, news, "expected to get news items, got empty result")
 		for i := range news {
 			assertNewsBasic(t, &news[i])
-			if *news[i].Content == "" {
-				t.Errorf("news[%d] should have content in NewsByFilter result", i)
-			}
+			assert.NotEmpty(t, *news[i].Content, "news[%d] should have content in NewsByFilter result", i)
 		}
 		assertNewsSortedByPublishedAt(t, news)
 	})
@@ -114,42 +239,21 @@ func TestManager_NewsByFilter_Integration(t *testing.T) {
 	t.Run("WithCategoryFilterReturnsFilteredNews", func(t *testing.T) {
 		categoryID := intPtr(1)
 		news, err := manager.NewsByFilter(ctx, nil, categoryID, intPtr(1), intPtr(10))
-		if err != nil {
-			t.Fatalf("NewsByFilter failed: %v", err)
-		}
-		if len(news) < 2 {
-			t.Fatalf("expected at least 2 news items, got %d", len(news))
-		}
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(news), 2, "expected at least 2 news items")
 		for _, item := range news {
-			if item.CategoryID != *categoryID {
-				t.Errorf("expected categoryID %d, got %d", *categoryID, item.CategoryID)
-			}
-			if item.Category.ID != *categoryID {
-				t.Errorf("expected category loaded with id %d, got %d", *categoryID, item.Category.ID)
-			}
+			assert.Equal(t, *categoryID, item.CategoryID, "expected categoryID to match")
+			assert.Equal(t, *categoryID, item.Category.ID, "expected category loaded with id to match")
 		}
 	})
 
 	t.Run("WithTagFilterReturnsFilteredNews", func(t *testing.T) {
 		tagID := intPtr(1)
 		news, err := manager.NewsByFilter(ctx, tagID, nil, intPtr(1), intPtr(10))
-		if err != nil {
-			t.Fatalf("NewsByFilter failed: %v", err)
-		}
-		if len(news) == 0 {
-			t.Fatalf("expected at least one news item, got empty result")
-		}
+		require.NoError(t, err)
+		assert.NotEmpty(t, news, "expected at least one news item, got empty result")
 		for _, item := range news {
-			hasTag := false
-			for _, tag := range item.Tags {
-				if tag.ID == *tagID {
-					hasTag = true
-					break
-				}
-			}
-			if !hasTag {
-				t.Errorf("news %d (%s) does not have tag %d", item.ID, item.Title, *tagID)
-			}
+			assertNewsHasTag(t, &item, *tagID)
 		}
 	})
 
@@ -157,86 +261,50 @@ func TestManager_NewsByFilter_Integration(t *testing.T) {
 		tagID := intPtr(1)
 		categoryID := intPtr(1)
 		news, err := manager.NewsByFilter(ctx, tagID, categoryID, intPtr(1), intPtr(10))
-		if err != nil {
-			t.Fatalf("NewsByFilter failed: %v", err)
-		}
-		if len(news) < 2 {
-			t.Fatalf("expected at least 2 news items, got %d", len(news))
-		}
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, len(news), 2, "expected at least 2 news items")
 		for _, item := range news {
-			if item.CategoryID != *categoryID {
-				t.Errorf("expected categoryID %d, got %d", *categoryID, item.CategoryID)
-			}
-			hasTag := false
-			for _, tag := range item.Tags {
-				if tag.ID == *tagID {
-					hasTag = true
-					break
-				}
-			}
-			if !hasTag {
-				t.Errorf("news %d (%s) does not have tag %d", item.ID, item.Title, *tagID)
-			}
+			assert.Equal(t, *categoryID, item.CategoryID, "expected categoryID to match")
+			assertNewsHasTag(t, &item, *tagID)
 		}
 	})
 
 	t.Run("WithPaginationReturnsCorrectPage", func(t *testing.T) {
 		page1, err := manager.NewsByFilter(ctx, nil, nil, intPtr(1), intPtr(3))
-		if err != nil {
-			t.Fatalf("NewsByFilter page1: %v", err)
-		}
-		if len(page1) != 3 {
-			t.Fatalf("expected 3 items on page1, got %d", len(page1))
-		}
+		require.NoError(t, err)
+		require.Len(t, page1, 3, "expected 3 items on page1")
 
 		page2, err := manager.NewsByFilter(ctx, nil, nil, intPtr(2), intPtr(3))
-		if err != nil {
-			t.Fatalf("NewsByFilter page2: %v", err)
-		}
-		if len(page2) != 3 {
-			t.Fatalf("expected 3 items on page2, got %d", len(page2))
-		}
+		require.NoError(t, err)
+		require.Len(t, page2, 3, "expected 3 items on page2")
 
 		seen := make(map[int]struct{}, 6)
 		for _, n := range page1 {
 			seen[n.ID] = struct{}{}
 		}
 		for _, n := range page2 {
-			if _, ok := seen[n.ID]; ok {
-				t.Fatalf("news %d appears on both pages", n.ID)
-			}
+			_, ok := seen[n.ID]
+			assert.False(t, ok, "news %d appears on both pages", n.ID)
 		}
 	})
 
 	t.Run("TagsAreAttachedToNews", func(t *testing.T) {
 		news, err := manager.NewsByFilter(ctx, nil, nil, intPtr(1), intPtr(10))
-		if err != nil {
-			t.Fatalf("NewsByFilter failed: %v", err)
-		}
-		if len(news) == 0 {
-			t.Fatalf("expected news items, got empty result")
-		}
+		require.NoError(t, err)
+		require.NotEmpty(t, news, "expected news items, got empty result")
 
 		hasNewsWithTags := false
 		for _, item := range news {
 			if len(item.Tags) > 0 {
 				hasNewsWithTags = true
 				for _, tag := range item.Tags {
-					if tag.ID == 0 {
-						t.Errorf("news %d has tag with zero TagID", item.ID)
-					}
-					if tag.Title == "" {
-						t.Errorf("news %d has tag with empty Title", item.ID)
-					}
-					if tag.StatusID != StatusPublished {
-						t.Errorf("news %d has tag %d with invalid StatusID: got %d want %d (published)", item.ID, tag.ID, tag.StatusID, StatusPublished)
-					}
+					assert.NotZero(t, tag.ID, "news %d has tag with zero TagID", item.ID)
+					assert.NotEmpty(t, tag.Title, "news %d has tag with empty Title", item.ID)
+					assert.Equal(t, StatusPublished, tag.StatusID, "news %d has tag %d with invalid StatusID", item.ID, tag.ID)
 				}
 			}
 		}
-		if !hasNewsWithTags {
-			t.Error("expected at least one news item with tags")
-		}
+		require.True(t, hasNewsWithTags, "expected at least one news item with tags")
 	})
 
 	t.Run("WithInvalidPaginationReturnsError", func(t *testing.T) {
@@ -254,135 +322,69 @@ func TestManager_NewsByFilter_Integration(t *testing.T) {
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
 				_, err := manager.NewsByFilter(ctx, nil, nil, tc.page, tc.pageSize)
-				if err == nil {
-					t.Fatalf("expected error, got nil")
-				}
+				assert.Error(t, err, "expected error for invalid pagination")
 			})
 		}
 	})
 
 	t.Run("ExcludesNewsWithUnpublishedCategory", func(t *testing.T) {
-		baseTime := db.BaseTime
+		unpublishedCategory := createTestCategory(t, tx, ctx,
+			withCategoryStatusID(2),
+			withCategoryTitle("Unpublished Category"),
+		)
 
-		unpublishedCategory := db.Category{
-			Title:       "Unpublished Category",
-			OrderNumber: 99,
-			StatusID:    2,
-		}
-		if _, err := tx.ModelContext(ctx, &unpublishedCategory).Insert(); err != nil {
-			t.Fatalf("insert unpublished category: %v", err)
-		}
-
-		contentUnpubCat := "This news is in an unpublished category"
-		newsInUnpublishedCategory := db.News{
-			CategoryID:  unpublishedCategory.ID,
-			Title:       "News in Unpublished Category",
-			Content:     &contentUnpubCat,
-			Author:      "Test Author",
-			PublishedAt: baseTime.Add(-24 * time.Hour),
-			TagIDs:      []int{1},
-			StatusID:    StatusPublished,
-		}
-		if _, err := tx.ModelContext(ctx, &newsInUnpublishedCategory).Insert(); err != nil {
-			t.Fatalf("insert news in unpublished category: %v", err)
-		}
+		newsInUnpublishedCategory := createTestNews(t, tx, ctx,
+			withCategoryID(unpublishedCategory.ID),
+			withTitle("News in Unpublished Category"),
+		)
 
 		allNews, err := manager.NewsByFilter(ctx, nil, nil, intPtr(1), intPtr(100))
-		if err != nil {
-			t.Fatalf("NewsByFilter: %v", err)
-		}
+		require.NoError(t, err)
 
 		for _, item := range allNews {
-			if item.ID == newsInUnpublishedCategory.ID {
-				t.Fatalf("news %d should not be returned (unpublished category)", item.ID)
-			}
-			if item.Category.StatusID != StatusPublished {
-				t.Fatalf("returned news %d has category status=%d, want %d", item.ID, item.Category.StatusID, StatusPublished)
-			}
+			assert.NotEqual(t, newsInUnpublishedCategory.ID, item.ID, "news should not be returned (unpublished category)")
+			assert.Equal(t, StatusPublished, item.Category.StatusID, "returned news %d has category status", item.ID)
 		}
 	})
 
 	t.Run("ExcludesNewsWithUnpublishedStatus", func(t *testing.T) {
-		baseTime := db.BaseTime
-
-		contentUnpub := "This news is not published"
-		unpublishedNews := db.News{
-			CategoryID:  1,
-			Title:       "Unpublished News",
-			Content:     &contentUnpub,
-			Author:      "Test Author",
-			PublishedAt: baseTime.Add(-24 * time.Hour),
-			TagIDs:      []int{1},
-			StatusID:    2,
-		}
-		if _, err := tx.ModelContext(ctx, &unpublishedNews).Insert(); err != nil {
-			t.Fatalf("insert unpublished news: %v", err)
-		}
+		unpublishedNews := createTestNews(t, tx, ctx,
+			withStatusID(2),
+			withTitle("Unpublished News"),
+		)
 
 		allNews, err := manager.NewsByFilter(ctx, nil, nil, intPtr(1), intPtr(100))
-		if err != nil {
-			t.Fatalf("NewsByFilter: %v", err)
-		}
+		require.NoError(t, err)
 
 		for _, item := range allNews {
-			if item.ID == unpublishedNews.ID {
-				t.Fatalf("news %d should not be returned (unpublished status)", item.ID)
-			}
-			if item.StatusID != StatusPublished {
-				t.Fatalf("returned news %d has status=%d, want %d", item.ID, item.StatusID, StatusPublished)
-			}
+			assert.NotEqual(t, unpublishedNews.ID, item.ID, "news should not be returned (unpublished status)")
+			assert.Equal(t, StatusPublished, item.StatusID, "returned news %d has status", item.ID)
 		}
 	})
 
 	t.Run("ReturnsOnlyNewsWithPublishedStatus", func(t *testing.T) {
 		allNews, err := manager.NewsByFilter(ctx, nil, nil, intPtr(1), intPtr(100))
-		if err != nil {
-			t.Fatalf("NewsByFilter: %v", err)
-		}
-
-		if len(allNews) == 0 {
-			t.Fatalf("expected at least one news item, got empty result")
-		}
+		require.NoError(t, err)
+		require.NotEmpty(t, allNews, "expected at least one news item, got empty result")
 
 		for _, item := range allNews {
-			if item.StatusID != StatusPublished {
-				t.Fatalf("returned news %d (title: %q) has status=%d, want %d (published)",
-					item.ID, item.Title, item.StatusID, StatusPublished)
-			}
+			assert.Equal(t, StatusPublished, item.StatusID, "returned news %d (title: %q) has status", item.ID, item.Title)
 		}
 	})
 
 	t.Run("ExcludesNewsWithFuturePublishedAt", func(t *testing.T) {
 		now := time.Now()
-
-		content3 := "This news is scheduled for the future"
-		futureNews := db.News{
-			CategoryID:  1,
-			Title:       "Future News",
-			Content:     &content3,
-			Author:      "Test Author",
-			PublishedAt: now.Add(24 * time.Hour),
-			TagIDs:      []int{1},
-			StatusID:    StatusPublished,
-		}
-		if _, err := tx.ModelContext(ctx, &futureNews).Insert(); err != nil {
-			t.Fatalf("insert future news: %v", err)
-		}
+		futureNews := createTestNews(t, tx, ctx,
+			withPublishedAt(now.Add(24*time.Hour)),
+			withTitle("Future News"),
+		)
 
 		allNews, err := manager.NewsByFilter(ctx, nil, nil, intPtr(1), intPtr(100))
-		if err != nil {
-			t.Fatalf("NewsByFilter: %v", err)
-		}
+		require.NoError(t, err)
 
 		for _, item := range allNews {
-			if item.ID == futureNews.ID {
-				t.Fatalf("news %d should not be returned (publishedAt in future)", item.ID)
-			}
-			if !item.PublishedAt.Before(now) {
-				t.Fatalf("returned news %d has publishedAt=%v which is not in the past (now=%v)",
-					item.ID, item.PublishedAt, now,
-				)
-			}
+			assert.NotEqual(t, futureNews.ID, item.ID, "news should not be returned (publishedAt in future)")
+			assert.True(t, item.PublishedAt.Before(now), "returned news %d has publishedAt which is not in the past", item.ID)
 		}
 	})
 }
@@ -405,12 +407,8 @@ func TestManager_NewsCount_Integration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			count, err := manager.NewsCount(ctx, tt.tagID, tt.categoryID)
-			if err != nil {
-				t.Fatalf("NewsCount: %v", err)
-			}
-			if count < tt.minCount {
-				t.Fatalf("expected at least %d, got %d", tt.minCount, count)
-			}
+			require.NoError(t, err)
+			assert.GreaterOrEqual(t, count, tt.minCount, "expected at least %d news items", tt.minCount)
 		})
 	}
 }
@@ -420,46 +418,28 @@ func TestManager_NewsByID_Integration(t *testing.T) {
 
 	t.Run("WithValidIDReturnsNews", func(t *testing.T) {
 		allNews, err := manager.NewsByFilter(ctx, nil, nil, intPtr(1), intPtr(1))
-		if err != nil {
-			t.Fatalf("NewsByFilter: %v", err)
-		}
-		if len(allNews) == 0 {
-			t.Fatalf("no news items available for testing")
-		}
+		require.NoError(t, err)
+		require.NotEmpty(t, allNews, "no news items available for testing")
 
 		newsID := allNews[0].ID
 		news, err := manager.NewsByID(ctx, newsID)
-		if err != nil {
-			t.Fatalf("NewsByID: %v", err)
-		}
-		if news == nil {
-			t.Fatalf("expected news, got nil")
-		}
+		require.NoError(t, err)
+		require.NotNil(t, news, "expected news, got nil")
 		assertNewsValid(t, news, newsID)
-		if *news.Content == "" {
-			t.Error("expected content to be present")
-		}
+		assert.NotEmpty(t, *news.Content, "expected content to be present")
 	})
 
 	t.Run("WithInvalidIDReturnsNil", func(t *testing.T) {
 		invalidID := 99999
 		news, err := manager.NewsByID(ctx, invalidID)
-		if err != nil {
-			t.Fatalf("expected nil error for invalid news ID, got: %v", err)
-		}
-		if news != nil {
-			t.Fatalf("expected nil news for invalid ID, got %+v", news)
-		}
+		assert.NoError(t, err, "expected nil error for invalid news ID")
+		assert.Nil(t, news, "expected nil news for invalid ID")
 	})
 
 	t.Run("TagsAreAttachedToNews", func(t *testing.T) {
 		allNews, err := manager.NewsByFilter(ctx, nil, nil, intPtr(1), intPtr(10))
-		if err != nil {
-			t.Fatalf("NewsByFilter: %v", err)
-		}
-		if len(allNews) == 0 {
-			t.Fatalf("no news items available")
-		}
+		require.NoError(t, err)
+		require.NotEmpty(t, allNews, "no news items available")
 
 		// Find a news item with tags
 		var newsWithTags *News
@@ -475,114 +455,53 @@ func TestManager_NewsByID_Integration(t *testing.T) {
 		}
 
 		news, err := manager.NewsByID(ctx, newsWithTags.ID)
-		if err != nil {
-			t.Fatalf("NewsByID: %v", err)
-		}
-		if news == nil {
-			t.Fatalf("expected news, got nil")
-		}
-
-		if len(news.Tags) == 0 {
-			t.Error("expected tags to be attached")
-		}
+		require.NoError(t, err)
+		require.NotNil(t, news, "expected news, got nil")
+		require.NotEmpty(t, news.Tags, "expected tags to be attached")
 		for _, tag := range news.Tags {
-			if tag.ID == 0 {
-				t.Errorf("tag has zero TagID")
-			}
-			if tag.Title == "" {
-				t.Errorf("tag has empty Title")
-			}
-			if tag.StatusID != StatusPublished {
-				t.Errorf("tag %d has invalid StatusID: got %d want %d (published)", tag.ID, tag.StatusID, StatusPublished)
-			}
+			assert.NotZero(t, tag.ID, "tag has zero TagID")
+			assert.NotEmpty(t, tag.Title, "tag has empty Title")
+			assert.Equal(t, StatusPublished, tag.StatusID, "tag %d has invalid StatusID", tag.ID)
 		}
 	})
 
 	t.Run("WithUnpublishedStatusReturnsNil", func(t *testing.T) {
-		baseTime := db.BaseTime
-
-		contentUnpub2 := "This news is not published"
-		unpublishedNews := db.News{
-			CategoryID:  1,
-			Title:       "Unpublished News",
-			Content:     &contentUnpub2,
-			Author:      "Test Author",
-			PublishedAt: baseTime.Add(-24 * time.Hour),
-			TagIDs:      []int{1},
-			StatusID:    2,
-		}
-		if _, err := tx.ModelContext(ctx, &unpublishedNews).Insert(); err != nil {
-			t.Fatalf("insert unpublished news: %v", err)
-		}
+		unpublishedNews := createTestNews(t, tx, ctx,
+			withStatusID(2),
+			withTitle("Unpublished News"),
+		)
 
 		got, err := manager.NewsByID(ctx, unpublishedNews.ID)
-		if err != nil {
-			t.Fatalf("expected nil error for unpublished news, got: %v", err)
-		}
-		if got != nil {
-			t.Fatalf("expected nil news, got %+v", got)
-		}
+		require.NoError(t, err, "expected nil error for unpublished news")
+		assert.Nil(t, got, "expected nil news for unpublished status")
 	})
 
 	t.Run("WithUnpublishedCategoryReturnsNil", func(t *testing.T) {
-		baseTime := db.BaseTime
+		unpublishedCategory := createTestCategory(t, tx, ctx,
+			withCategoryStatusID(2),
+			withCategoryTitle("Unpublished Category for GetNewsByID"),
+		)
 
-		unpublishedCategory := db.Category{
-			Title:       "Unpublished Category for GetNewsByID",
-			OrderNumber: 99,
-			StatusID:    2,
-		}
-		if _, err := tx.ModelContext(ctx, &unpublishedCategory).Insert(); err != nil {
-			t.Fatalf("insert unpublished category: %v", err)
-		}
-
-		contentUnpubCat2 := "This news is in an unpublished category"
-		newsInUnpublishedCategory := db.News{
-			CategoryID:  unpublishedCategory.ID,
-			Title:       "News in Unpublished Category",
-			Content:     &contentUnpubCat2,
-			Author:      "Test Author",
-			PublishedAt: baseTime.Add(-24 * time.Hour),
-			TagIDs:      []int{1},
-			StatusID:    StatusPublished,
-		}
-		if _, err := tx.ModelContext(ctx, &newsInUnpublishedCategory).Insert(); err != nil {
-			t.Fatalf("insert news in unpublished category: %v", err)
-		}
+		newsInUnpublishedCategory := createTestNews(t, tx, ctx,
+			withCategoryID(unpublishedCategory.ID),
+			withTitle("News in Unpublished Category"),
+		)
 
 		got, err := manager.NewsByID(ctx, newsInUnpublishedCategory.ID)
-		if err != nil {
-			t.Fatalf("expected nil error for news with unpublished category, got: %v", err)
-		}
-		if got != nil {
-			t.Fatalf("expected nil news, got %+v", got)
-		}
+		require.NoError(t, err, "expected nil error for news with unpublished category")
+		assert.Nil(t, got, "expected nil news for unpublished category")
 	})
 
 	t.Run("WithFuturePublishedAtReturnsNil", func(t *testing.T) {
 		now := time.Now()
-
-		content6 := "This news is scheduled for the future"
-		futureNews := db.News{
-			CategoryID:  1,
-			Title:       "Future News for GetNewsByID",
-			Content:     &content6,
-			Author:      "Test Author",
-			PublishedAt: now.Add(24 * time.Hour),
-			TagIDs:      []int{1},
-			StatusID:    StatusPublished,
-		}
-		if _, err := tx.ModelContext(ctx, &futureNews).Insert(); err != nil {
-			t.Fatalf("insert future news: %v", err)
-		}
+		futureNews := createTestNews(t, tx, ctx,
+			withPublishedAt(now.Add(24*time.Hour)),
+			withTitle("Future News for GetNewsByID"),
+		)
 
 		got, err := manager.NewsByID(ctx, futureNews.ID)
-		if err != nil {
-			t.Fatalf("expected nil error for news with future publishedAt, got: %v", err)
-		}
-		if got != nil {
-			t.Fatalf("expected nil news, got %+v", got)
-		}
+		require.NoError(t, err, "expected nil error for news with future publishedAt")
+		assert.Nil(t, got, "expected nil news for future publishedAt")
 	})
 }
 
@@ -591,41 +510,27 @@ func TestManager_Categories_Integration(t *testing.T) {
 
 	t.Run("ReturnsAllPublishedCategories", func(t *testing.T) {
 		categories, err := manager.Categories(ctx)
-		if err != nil {
-			t.Fatalf("Categories: %v", err)
-		}
-		if len(categories) < 5 {
-			t.Fatalf("expected at least 5 categories, got %d", len(categories))
-		}
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(categories), 5, "expected at least 5 categories")
 		for _, cat := range categories {
 			assertCategoryValid(t, cat)
 		}
 		for i := 0; i < len(categories)-1; i++ {
-			if categories[i].OrderNumber > categories[i+1].OrderNumber {
-				t.Fatalf("categories not sorted by orderNumber ASC")
-			}
+			assert.LessOrEqual(t, categories[i].OrderNumber, categories[i+1].OrderNumber, "categories not sorted by orderNumber ASC")
 		}
 	})
 
 	t.Run("OnlyReturnsPublishedCategories", func(t *testing.T) {
-		unpublishedCat := db.Category{
-			Title:       "Unpublished Category",
-			OrderNumber: 99,
-			StatusID:    2,
-		}
-		if _, err := tx.ModelContext(ctx, &unpublishedCat).Insert(); err != nil {
-			t.Fatalf("insert unpublished category: %v", err)
-		}
+		unpublishedCat := createTestCategory(t, tx, ctx,
+			withCategoryStatusID(2),
+			withCategoryTitle("Unpublished Category"),
+		)
 
 		categories, err := manager.Categories(ctx)
-		if err != nil {
-			t.Fatalf("Categories: %v", err)
-		}
+		require.NoError(t, err)
 
 		for _, cat := range categories {
-			if cat.ID == unpublishedCat.ID {
-				t.Fatalf("unpublished category should not be returned")
-			}
+			assert.NotEqual(t, unpublishedCat.ID, cat.ID, "unpublished category should not be returned")
 		}
 	})
 }
@@ -635,40 +540,27 @@ func TestManager_Tags_Integration(t *testing.T) {
 
 	t.Run("ReturnsAllPublishedTags", func(t *testing.T) {
 		tags, err := manager.Tags(ctx)
-		if err != nil {
-			t.Fatalf("Tags: %v", err)
-		}
-		if len(tags) < 5 {
-			t.Fatalf("expected at least 5 tags, got %d", len(tags))
-		}
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(tags), 5, "expected at least 5 tags")
 		for _, tag := range tags {
 			assertTagValid(t, tag)
 		}
 		for i := 0; i < len(tags)-1; i++ {
-			if tags[i].Title > tags[i+1].Title {
-				t.Fatalf("tags not sorted by title ASC")
-			}
+			assert.LessOrEqual(t, tags[i].Title, tags[i+1].Title, "tags not sorted by title ASC")
 		}
 	})
 
 	t.Run("OnlyReturnsPublishedTags", func(t *testing.T) {
-		unpublishedTag := db.Tag{
-			Title:    "Unpublished Tag",
-			StatusID: 2,
-		}
-		if _, err := tx.ModelContext(ctx, &unpublishedTag).Insert(); err != nil {
-			t.Fatalf("insert unpublished tag: %v", err)
-		}
+		unpublishedTag := createTestTag(t, tx, ctx,
+			withTagStatusID(2),
+			withTagTitle("Unpublished Tag"),
+		)
 
 		tags, err := manager.Tags(ctx)
-		if err != nil {
-			t.Fatalf("Tags: %v", err)
-		}
+		require.NoError(t, err)
 
 		for _, tag := range tags {
-			if tag.ID == unpublishedTag.ID {
-				t.Fatalf("unpublished tag should not be returned")
-			}
+			assert.NotEqual(t, unpublishedTag.ID, tag.ID, "unpublished tag should not be returned")
 		}
 	})
 }
@@ -679,12 +571,8 @@ func TestManager_TagsByIds_Integration(t *testing.T) {
 	t.Run("ReturnsTagsForValidIds", func(t *testing.T) {
 		tagIDs := []int{1, 2, 3}
 		tags, err := manager.TagsByIds(ctx, tagIDs)
-		if err != nil {
-			t.Fatalf("TagsByIds: %v", err)
-		}
-		if len(tags) != 3 {
-			t.Fatalf("expected 3 tags, got %d", len(tags))
-		}
+		require.NoError(t, err)
+		require.Len(t, tags, 3, "expected 3 tags")
 		for _, tag := range tags {
 			assertTagValid(t, tag)
 		}
@@ -692,55 +580,35 @@ func TestManager_TagsByIds_Integration(t *testing.T) {
 
 	t.Run("HandlesEmptyTagIds", func(t *testing.T) {
 		tags, err := manager.TagsByIds(ctx, nil)
-		if err != nil {
-			t.Fatalf("TagsByIds empty: %v", err)
-		}
-		if tags == nil {
-			t.Fatalf("expected empty slice, got nil")
-		}
-		if len(tags) != 0 {
-			t.Fatalf("expected empty slice, got %d items", len(tags))
-		}
+		require.NoError(t, err)
+		require.NotNil(t, tags, "expected empty slice, got nil")
+		assert.Empty(t, tags, "expected empty slice")
 	})
 
 	t.Run("HandlesNonExistentTagIds", func(t *testing.T) {
 		tagIDs := []int{99999, 99998}
 		tags, err := manager.TagsByIds(ctx, tagIDs)
-		if err != nil {
-			t.Fatalf("TagsByIds non-existent: %v", err)
-		}
-		if tags == nil {
-			t.Fatalf("expected empty slice, got nil")
-		}
-		if len(tags) != 0 {
-			t.Fatalf("expected empty slice for non-existent tags, got %d items", len(tags))
-		}
+		require.NoError(t, err)
+		require.NotNil(t, tags, "expected empty slice, got nil")
+		assert.Empty(t, tags, "expected empty slice for non-existent tags")
 	})
 
 	t.Run("ExcludesUnpublishedTags", func(t *testing.T) {
-		unpublishedTag := db.Tag{
-			Title:    "Unpublished Tag for News",
-			StatusID: 2,
-		}
-		if _, err := tx.ModelContext(ctx, &unpublishedTag).Insert(); err != nil {
-			t.Fatalf("insert unpublished tag: %v", err)
-		}
+		unpublishedTag := createTestTag(t, tx, ctx,
+			withTagStatusID(2),
+			withTagTitle("Unpublished Tag for News"),
+		)
 
 		mixedTagIDs := []int{1, unpublishedTag.ID}
 		tags, err := manager.TagsByIds(ctx, mixedTagIDs)
-		if err != nil {
-			t.Fatalf("TagsByIds: %v", err)
-		}
+		require.NoError(t, err)
 
 		for _, tag := range tags {
-			if tag.ID == unpublishedTag.ID {
-				t.Fatalf("unpublished tag %d should not be loaded", unpublishedTag.ID)
-			}
+			assert.NotEqual(t, unpublishedTag.ID, tag.ID, "unpublished tag should not be loaded")
 		}
 
-		if len(tags) != 1 || tags[0].ID != 1 {
-			t.Fatalf("expected only published tag 1, got %+v", tags)
-		}
+		assert.Len(t, tags, 1, "expected only one published tag")
+		assert.Equal(t, 1, tags[0].ID, "expected only published tag 1")
 	})
 }
 
@@ -751,91 +619,45 @@ func intPtr(i int) *int { return &i }
 func assertNewsBasic(t *testing.T, news *News) {
 	t.Helper()
 
-	if news.ID == 0 {
-		t.Fatalf("invalid NewsID")
-	}
-	if news.Title == "" {
-		t.Fatalf("empty Title")
-	}
-	if news.StatusID != StatusPublished {
-		t.Fatalf("invalid StatusID: got %d want %d (published)", news.StatusID, StatusPublished)
-	}
-	if news.CategoryID == 0 {
-		t.Fatalf("invalid CategoryID")
-	}
-	if news.Category.ID == 0 {
-		t.Fatalf("category not loaded")
-	}
-	if news.Category.StatusID != StatusPublished {
-		t.Fatalf("invalid Category StatusID: got %d want %d (published)", news.Category.StatusID, StatusPublished)
-	}
-	if news.PublishedAt.After(db.BaseTime.Add(365 * 24 * time.Hour)) {
-		t.Fatalf("publishedAt is unexpectedly in the future: %v", news.PublishedAt)
-	}
+	require.NotZero(t, news.ID, "invalid NewsID")
+	require.NotEmpty(t, news.Title, "empty Title")
+	assert.Equal(t, StatusPublished, news.StatusID, "invalid StatusID")
+	require.NotZero(t, news.CategoryID, "invalid CategoryID")
+	require.NotZero(t, news.Category.ID, "category not loaded")
+	assert.Equal(t, StatusPublished, news.Category.StatusID, "invalid Category StatusID")
+	assert.False(t, news.PublishedAt.After(db.BaseTime.Add(365*24*time.Hour)), "publishedAt is unexpectedly in the future: %v", news.PublishedAt)
 }
 
 func assertNewsValid(t *testing.T, news *News, newsID int) {
 	t.Helper()
-	if news == nil {
-		t.Fatalf("news is nil")
-	}
-	if news.ID != newsID {
-		t.Fatalf("expected NewsID %d, got %d", newsID, news.ID)
-	}
-	if news.StatusID != StatusPublished {
-		t.Fatalf("invalid StatusID: got %d want %d (published)", news.StatusID, StatusPublished)
-	}
-	if news.Title == "" {
-		t.Fatalf("empty Title")
-	}
-	if *news.Content == "" {
-		t.Fatalf("empty Content")
-	}
-	if news.Author == "" {
-		t.Fatalf("empty Author")
-	}
-	if news.CategoryID == 0 {
-		t.Fatalf("invalid CategoryID")
-	}
-	if news.Category.ID == 0 {
-		t.Fatalf("category not loaded")
-	}
-	if news.Category.StatusID != StatusPublished {
-		t.Fatalf("invalid Category StatusID: got %d want %d (published)", news.Category.StatusID, StatusPublished)
-	}
+	require.NotNil(t, news, "news is nil")
+	assert.Equal(t, newsID, news.ID, "expected NewsID to match")
+	assert.Equal(t, StatusPublished, news.StatusID, "invalid StatusID")
+	require.NotEmpty(t, news.Title, "empty Title")
+	require.NotEmpty(t, *news.Content, "empty Content")
+	require.NotEmpty(t, news.Author, "empty Author")
+	require.NotZero(t, news.CategoryID, "invalid CategoryID")
+	require.NotZero(t, news.Category.ID, "category not loaded")
+	assert.Equal(t, StatusPublished, news.Category.StatusID, "invalid Category StatusID")
 }
 
 func assertCategoryValid(t *testing.T, category Category) {
 	t.Helper()
-	if category.ID == 0 {
-		t.Fatalf("invalid CategoryID")
-	}
-	if category.Title == "" {
-		t.Fatalf("empty Title")
-	}
-	if category.StatusID != 1 {
-		t.Fatalf("invalid StatusID: got %d want 1 (published)", category.StatusID)
-	}
+	require.NotZero(t, category.ID, "invalid CategoryID")
+	require.NotEmpty(t, category.Title, "empty Title")
+	assert.Equal(t, 1, category.StatusID, "invalid StatusID")
 }
 
 func assertTagValid(t *testing.T, tag Tag) {
 	t.Helper()
-	if tag.ID == 0 {
-		t.Fatalf("invalid TagID")
-	}
-	if tag.Title == "" {
-		t.Fatalf("empty Title")
-	}
-	if tag.StatusID != 1 {
-		t.Fatalf("invalid StatusID: got %d want 1 (published)", tag.StatusID)
-	}
+	require.NotZero(t, tag.ID, "invalid TagID")
+	require.NotEmpty(t, tag.Title, "empty Title")
+	assert.Equal(t, 1, tag.StatusID, "invalid StatusID")
 }
 
 func assertNewsSortedByPublishedAt(t *testing.T, news []News) {
 	t.Helper()
 	for i := 0; i < len(news)-1; i++ {
-		if news[i].PublishedAt.Before(news[i+1].PublishedAt) {
-			t.Fatalf("news not sorted by publishedAt desc at %d", i)
-		}
+		assert.False(t, news[i].PublishedAt.Before(news[i+1].PublishedAt), "news not sorted by publishedAt desc at %d", i)
 	}
 }

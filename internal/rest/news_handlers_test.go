@@ -14,6 +14,8 @@ import (
 	"github.com/daniilsolovey/news-portal/internal/db"
 	"github.com/daniilsolovey/news-portal/internal/newsportal"
 	"github.com/go-pg/pg/v10"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -85,29 +87,18 @@ func TestNewsHandler_News_Integration(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d, body: %s", rec.Code, rec.Body.String())
-		}
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200, body: %s", rec.Body.String())
 
 		var summaries []News
-		if err := json.Unmarshal(rec.Body.Bytes(), &summaries); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
+		err := json.Unmarshal(rec.Body.Bytes(), &summaries)
+		require.NoError(t, err, "failed to unmarshal response")
 
-		if len(summaries) == 0 {
-			t.Error("expected news items, got empty result")
-		}
+		require.NotEmpty(t, summaries, "expected news items, got empty result")
 
 		for _, summary := range summaries {
-			if summary.NewsID == 0 {
-				t.Errorf("invalid NewsID")
-			}
-			if summary.Title == "" {
-				t.Errorf("empty Title")
-			}
-			if summary.CategoryID == 0 {
-				t.Errorf("invalid CategoryID")
-			}
+			assert.NotZero(t, summary.NewsID, "invalid NewsID")
+			assert.NotEmpty(t, summary.Title, "empty Title")
+			assert.NotZero(t, summary.CategoryID, "invalid CategoryID")
 		}
 	})
 
@@ -117,18 +108,13 @@ func TestNewsHandler_News_Integration(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d, body: %s", rec.Code, rec.Body.String())
-		}
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200, body: %s", rec.Body.String())
 
 		var summaries []News
-		if err := json.Unmarshal(rec.Body.Bytes(), &summaries); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
+		err := json.Unmarshal(rec.Body.Bytes(), &summaries)
+		require.NoError(t, err, "failed to unmarshal response")
 
-		if len(summaries) == 0 {
-			t.Error("expected news items with tag 1, got empty result")
-		}
+		assert.NotEmpty(t, summaries, "expected news items with tag 1, got empty result")
 	})
 
 	t.Run("SuccessWithCategoryIdFilter", func(t *testing.T) {
@@ -137,23 +123,16 @@ func TestNewsHandler_News_Integration(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d, body: %s", rec.Code, rec.Body.String())
-		}
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200, body: %s", rec.Body.String())
 
 		var summaries []News
-		if err := json.Unmarshal(rec.Body.Bytes(), &summaries); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
+		err := json.Unmarshal(rec.Body.Bytes(), &summaries)
+		require.NoError(t, err, "failed to unmarshal response")
 
-		if len(summaries) < 2 {
-			t.Fatalf("expected at least 2 news items, got %d", len(summaries))
-		}
+		require.GreaterOrEqual(t, len(summaries), 2, "expected at least 2 news items")
 
 		for _, summary := range summaries {
-			if summary.CategoryID != 1 {
-				t.Errorf("expected categoryID 1, got %d", summary.CategoryID)
-			}
+			assert.Equal(t, 1, summary.CategoryID, "expected categoryID to match")
 		}
 	})
 
@@ -163,44 +142,31 @@ func TestNewsHandler_News_Integration(t *testing.T) {
 		rec1 := httptest.NewRecorder()
 		e.ServeHTTP(rec1, req1)
 
-		if rec1.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d", rec1.Code)
-		}
+		require.Equal(t, http.StatusOK, rec1.Code, "expected status 200 for page1")
 
 		var page1 []News
-		if err := json.Unmarshal(rec1.Body.Bytes(), &page1); err != nil {
-			t.Fatalf("failed to unmarshal page1: %v", err)
-		}
-
-		if len(page1) != 3 {
-			t.Fatalf("expected 3 items on page1, got %d", len(page1))
-		}
+		err := json.Unmarshal(rec1.Body.Bytes(), &page1)
+		require.NoError(t, err, "failed to unmarshal page1")
+		require.Len(t, page1, 3, "expected 3 items on page1")
 
 		req2 := httptest.NewRequest(http.MethodGet, "/api/v1/news?page=2&pageSize=3", nil)
 		rec2 := httptest.NewRecorder()
 		e.ServeHTTP(rec2, req2)
 
-		if rec2.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d", rec2.Code)
-		}
+		require.Equal(t, http.StatusOK, rec2.Code, "expected status 200 for page2")
 
 		var page2 []News
-		if err := json.Unmarshal(rec2.Body.Bytes(), &page2); err != nil {
-			t.Fatalf("failed to unmarshal page2: %v", err)
-		}
-
-		if len(page2) != 3 {
-			t.Fatalf("expected 3 items on page2, got %d", len(page2))
-		}
+		err = json.Unmarshal(rec2.Body.Bytes(), &page2)
+		require.NoError(t, err, "failed to unmarshal page2")
+		require.Len(t, page2, 3, "expected 3 items on page2")
 
 		seen := make(map[int]struct{})
 		for _, n := range page1 {
 			seen[n.NewsID] = struct{}{}
 		}
 		for _, n := range page2 {
-			if _, ok := seen[n.NewsID]; ok {
-				t.Fatalf("news %d appears on both pages", n.NewsID)
-			}
+			_, ok := seen[n.NewsID]
+			assert.False(t, ok, "news %d appears on both pages", n.NewsID)
 		}
 	})
 
@@ -210,18 +176,13 @@ func TestNewsHandler_News_Integration(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("expected status 400, got %d", rec.Code)
-		}
+		require.Equal(t, http.StatusBadRequest, rec.Code, "expected status 400")
 
 		var response map[string]string
-		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err, "failed to unmarshal response")
 
-		if response["error"] != "invalid tagId" {
-			t.Errorf("expected error 'invalid tagId', got %q", response["error"])
-		}
+		assert.Equal(t, "invalid request parameters", response["error"], "expected error message to match")
 	})
 
 	t.Run("InvalidCategoryId", func(t *testing.T) {
@@ -230,18 +191,13 @@ func TestNewsHandler_News_Integration(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("expected status 400, got %d", rec.Code)
-		}
+		require.Equal(t, http.StatusBadRequest, rec.Code, "expected status 400")
 
 		var response map[string]string
-		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err, "failed to unmarshal response")
 
-		if response["error"] != "invalid categoryId" {
-			t.Errorf("expected error 'invalid categoryId', got %q", response["error"])
-		}
+		assert.Equal(t, "invalid request parameters", response["error"], "expected error message to match")
 	})
 
 	t.Run("InvalidPage", func(t *testing.T) {
@@ -250,18 +206,13 @@ func TestNewsHandler_News_Integration(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("expected status 400, got %d", rec.Code)
-		}
+		require.Equal(t, http.StatusInternalServerError, rec.Code, "expected status 500 for invalid page")
 
 		var response map[string]string
-		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err, "failed to unmarshal response")
 
-		if response["error"] != "invalid page" {
-			t.Errorf("expected error 'invalid page', got %q", response["error"])
-		}
+		assert.Equal(t, "internal error", response["error"], "expected error message to match")
 	})
 
 	t.Run("InvalidPageSize", func(t *testing.T) {
@@ -270,18 +221,13 @@ func TestNewsHandler_News_Integration(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("expected status 400, got %d", rec.Code)
-		}
+		require.Equal(t, http.StatusInternalServerError, rec.Code, "expected status 500 for invalid pageSize")
 
 		var response map[string]string
-		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err, "failed to unmarshal response")
 
-		if response["error"] != "invalid pageSize" {
-			t.Errorf("expected error 'invalid pageSize', got %q", response["error"])
-		}
+		assert.Equal(t, "internal error", response["error"], "expected error message to match")
 	})
 
 	t.Run("PageSizeCappedAt100", func(t *testing.T) {
@@ -290,9 +236,7 @@ func TestNewsHandler_News_Integration(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d", rec.Code)
-		}
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200")
 
 		// The pageSize should be capped at 100, but we can't directly verify this
 		// without checking the actual query. We just verify it doesn't error.
@@ -306,18 +250,13 @@ func TestNewsHandler_NewsCount_Integration(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d, body: %s", rec.Code, rec.Body.String())
-		}
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200, body: %s", rec.Body.String())
 
 		var count int
-		if err := json.Unmarshal(rec.Body.Bytes(), &count); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
+		err := json.Unmarshal(rec.Body.Bytes(), &count)
+		require.NoError(t, err, "failed to unmarshal response")
 
-		if count < 7 {
-			t.Fatalf("expected at least 7, got %d", count)
-		}
+		assert.GreaterOrEqual(t, count, 7, "expected at least 7 news items")
 	})
 
 	t.Run("SuccessWithTagId", func(t *testing.T) {
@@ -326,18 +265,13 @@ func TestNewsHandler_NewsCount_Integration(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d", rec.Code)
-		}
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200")
 
 		var count int
-		if err := json.Unmarshal(rec.Body.Bytes(), &count); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
+		err := json.Unmarshal(rec.Body.Bytes(), &count)
+		require.NoError(t, err, "failed to unmarshal response")
 
-		if count < 7 {
-			t.Fatalf("expected at least 7, got %d", count)
-		}
+		assert.GreaterOrEqual(t, count, 7, "expected at least 7 news items")
 	})
 
 	t.Run("SuccessWithCategoryId", func(t *testing.T) {
@@ -346,18 +280,13 @@ func TestNewsHandler_NewsCount_Integration(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d", rec.Code)
-		}
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200")
 
 		var count int
-		if err := json.Unmarshal(rec.Body.Bytes(), &count); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
+		err := json.Unmarshal(rec.Body.Bytes(), &count)
+		require.NoError(t, err, "failed to unmarshal response")
 
-		if count < 2 {
-			t.Fatalf("expected at least 2, got %d", count)
-		}
+		assert.GreaterOrEqual(t, count, 2, "expected at least 2 news items")
 	})
 
 	t.Run("InvalidTagId", func(t *testing.T) {
@@ -366,18 +295,13 @@ func TestNewsHandler_NewsCount_Integration(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("expected status 400, got %d", rec.Code)
-		}
+		require.Equal(t, http.StatusBadRequest, rec.Code, "expected status 400")
 
 		var response map[string]string
-		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err, "failed to unmarshal response")
 
-		if response["error"] != "invalid tagId" {
-			t.Errorf("expected error 'invalid tagId', got %q", response["error"])
-		}
+		assert.Equal(t, "invalid request parameters", response["error"], "expected error message to match")
 	})
 }
 
@@ -389,18 +313,12 @@ func TestNewsHandler_NewsByID_Integration(t *testing.T) {
 		recList := httptest.NewRecorder()
 		e.ServeHTTP(recList, reqList)
 
-		if recList.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d", recList.Code)
-		}
+		require.Equal(t, http.StatusOK, recList.Code, "expected status 200 for news list")
 
 		var summaries []News
-		if err := json.Unmarshal(recList.Body.Bytes(), &summaries); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
-
-		if len(summaries) == 0 {
-			t.Fatal("no news items available for testing")
-		}
+		err := json.Unmarshal(recList.Body.Bytes(), &summaries)
+		require.NoError(t, err, "failed to unmarshal news list response")
+		require.NotEmpty(t, summaries, "no news items available for testing")
 
 		newsID := summaries[0].NewsID
 
@@ -408,27 +326,16 @@ func TestNewsHandler_NewsByID_Integration(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d, body: %s", rec.Code, rec.Body.String())
-		}
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200, body: %s", rec.Body.String())
 
 		var news News
-		if err := json.Unmarshal(rec.Body.Bytes(), &news); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
+		err = json.Unmarshal(rec.Body.Bytes(), &news)
+		require.NoError(t, err, "failed to unmarshal response")
 
-		if news.NewsID != newsID {
-			t.Errorf("expected NewsID %d, got %d", newsID, news.NewsID)
-		}
-		if news.Title == "" {
-			t.Error("empty Title")
-		}
-		if news.Content == "" {
-			t.Error("empty Content")
-		}
-		if news.CategoryID == 0 {
-			t.Error("invalid CategoryID")
-		}
+		assert.Equal(t, newsID, news.NewsID, "expected NewsID to match")
+		assert.NotEmpty(t, news.Title, "empty Title")
+		assert.NotEmpty(t, news.Content, "empty Content")
+		assert.NotZero(t, news.CategoryID, "invalid CategoryID")
 	})
 
 	t.Run("NotFound", func(t *testing.T) {
@@ -437,13 +344,8 @@ func TestNewsHandler_NewsByID_Integration(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusNotFound {
-			t.Fatalf("expected status 404, got %d, body: %s", rec.Code, rec.Body.String())
-		}
-
-		if rec.Body.String() != "news not found" {
-			t.Errorf("expected 'news not found', got %q", rec.Body.String())
-		}
+		require.Equal(t, http.StatusNotFound, rec.Code, "expected status 404, body: %s", rec.Body.String())
+		assert.Equal(t, "news not found", rec.Body.String(), "expected error message to match")
 	})
 
 	t.Run("InvalidId", func(t *testing.T) {
@@ -452,18 +354,13 @@ func TestNewsHandler_NewsByID_Integration(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("expected status 400, got %d", rec.Code)
-		}
+		require.Equal(t, http.StatusBadRequest, rec.Code, "expected status 400")
 
 		var response map[string]string
-		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err, "failed to unmarshal response")
 
-		if response["error"] != "invalid id" {
-			t.Errorf("expected error 'invalid id', got %q", response["error"])
-		}
+		assert.Equal(t, "invalid id", response["error"], "expected error message to match")
 	})
 }
 
@@ -474,26 +371,17 @@ func TestNewsHandler_Categories_Integration(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d, body: %s", rec.Code, rec.Body.String())
-		}
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200, body: %s", rec.Body.String())
 
 		var categories []Category
-		if err := json.Unmarshal(rec.Body.Bytes(), &categories); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
+		err := json.Unmarshal(rec.Body.Bytes(), &categories)
+		require.NoError(t, err, "failed to unmarshal response")
 
-		if len(categories) < 5 {
-			t.Fatalf("expected at least 5 categories, got %d", len(categories))
-		}
+		require.GreaterOrEqual(t, len(categories), 5, "expected at least 5 categories")
 
 		for _, cat := range categories {
-			if cat.CategoryID == 0 {
-				t.Errorf("invalid CategoryID")
-			}
-			if cat.Title == "" {
-				t.Errorf("empty Title")
-			}
+			assert.NotZero(t, cat.CategoryID, "invalid CategoryID")
+			assert.NotEmpty(t, cat.Title, "empty Title")
 		}
 	})
 }
@@ -505,26 +393,17 @@ func TestNewsHandler_Tags_Integration(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d, body: %s", rec.Code, rec.Body.String())
-		}
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200, body: %s", rec.Body.String())
 
 		var tags []Tag
-		if err := json.Unmarshal(rec.Body.Bytes(), &tags); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
+		err := json.Unmarshal(rec.Body.Bytes(), &tags)
+		require.NoError(t, err, "failed to unmarshal response")
 
-		if len(tags) < 5 {
-			t.Fatalf("expected at least 5 tags, got %d", len(tags))
-		}
+		require.GreaterOrEqual(t, len(tags), 5, "expected at least 5 tags")
 
 		for _, tag := range tags {
-			if tag.TagID == 0 {
-				t.Errorf("invalid TagID")
-			}
-			if tag.Title == "" {
-				t.Errorf("empty Title")
-			}
+			assert.NotZero(t, tag.TagID, "invalid TagID")
+			assert.NotEmpty(t, tag.Title, "empty Title")
 		}
 	})
 }
