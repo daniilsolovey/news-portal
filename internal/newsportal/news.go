@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	db "github.com/daniilsolovey/news-portal/internal/db"
 	"github.com/go-pg/pg/v10/orm"
@@ -26,6 +27,14 @@ func NewNewsManager(dbc orm.DB) *Manager {
 	}
 }
 
+func withTagIDFilter(tagID *int) db.OpFunc {
+	return func(query *orm.Query) {
+		if tagID != nil {
+			db.Filter{Field: db.Columns.News.TagIDs, Value: *tagID, SearchType: db.SearchTypeArrayContains}.Apply(query)
+		}
+	}
+}
+
 // NewsByFilter retrieves news with optional filtering by tagID and categoryID, with pagination
 // Returns NewsSummary (without content) sorted by publishedAt DESC
 func (u *Manager) NewsByFilter(ctx context.Context, tagID, categoryID *int, page, pageSize *int) ([]News, error) {
@@ -36,8 +45,11 @@ func (u *Manager) NewsByFilter(ctx context.Context, tagID, categoryID *int, page
 
 	dbNews, err := u.repo.NewsByFilters(ctx, &db.NewsSearch{CategoryID: categoryID},
 		db.NewPager(p, ps),
-		db.WithRelations(db.Columns.News.Category),
+		db.WithRelations(db.Columns.News.Category), db.EnabledOnly(),
+		db.WithPublishedBefore(time.Now()),
+		db.WithCategoryEnabled(),
 		db.WithSort(db.NewSortField(db.Columns.News.PublishedAt, true)),
+		withTagIDFilter(tagID),
 	)
 
 	newsList := NewNewsList(dbNews)
@@ -51,7 +63,11 @@ func (u *Manager) NewsByFilter(ctx context.Context, tagID, categoryID *int, page
 }
 
 func (u *Manager) NewsCount(ctx context.Context, tagID, categoryID *int) (int, error) {
-	count, err := u.repo.CountNews(ctx, &db.NewsSearch{CategoryID: categoryID})
+	count, err := u.repo.CountNews(ctx, &db.NewsSearch{CategoryID: categoryID},
+		db.WithRelations(db.Columns.News.Category), db.EnabledOnly(),
+		db.WithPublishedBefore(time.Now()), db.WithCategoryEnabled(),
+		withTagIDFilter(tagID),
+	)
 	if err != nil {
 		return 0, fmt.Errorf("db get news count: %w", err)
 	}
@@ -61,7 +77,8 @@ func (u *Manager) NewsCount(ctx context.Context, tagID, categoryID *int) (int, e
 
 func (u *Manager) NewsByID(ctx context.Context, newsID int) (*News, error) {
 	dbNews, err := u.repo.NewsByID(ctx, newsID,
-		db.WithRelations(db.Columns.News.Category),
+		db.WithRelations(db.Columns.News.Category), db.EnabledOnly(),
+		db.WithPublishedBefore(time.Now()), db.WithCategoryEnabled(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("db get news by id: %w", err)
@@ -80,14 +97,14 @@ func (u *Manager) NewsByID(ctx context.Context, newsID int) (*News, error) {
 }
 
 func (u *Manager) Categories(ctx context.Context) ([]Category, error) {
-	list, err := u.repo.CategoriesByFilters(ctx, nil, db.PagerNoLimit)
+	list, err := u.repo.CategoriesByFilters(ctx, nil, db.PagerNoLimit, db.EnabledOnly())
 
 	return NewCategories(list), err
 }
 
 func (u *Manager) Tags(ctx context.Context) ([]Tag, error) {
 	list, err := u.repo.TagsByFilters(ctx, nil, db.PagerNoLimit,
-		db.WithSort(db.NewSortField(db.Columns.Tag.Title, false)),
+		db.WithSort(db.NewSortField(db.Columns.Tag.Title, false)), db.EnabledOnly(),
 	)
 
 	return NewTags(list), err
@@ -98,7 +115,9 @@ func (u *Manager) TagsByIds(ctx context.Context, tagIds []int) ([]Tag, error) {
 		return []Tag{}, nil
 	}
 
-	list, err := u.repo.TagsByFilters(ctx, &db.TagSearch{IDs: tagIds}, db.PagerNoLimit)
+	list, err := u.repo.TagsByFilters(ctx, &db.TagSearch{IDs: tagIds}, db.PagerNoLimit,
+		db.EnabledOnly(),
+	)
 
 	return NewTags(list), err
 }

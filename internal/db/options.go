@@ -114,6 +114,20 @@ func EnabledOnly() OpFunc {
 	}
 }
 
+// WithCategoryEnabled is a function that adds "category.statusId"=1 filter to query. Добавлено вручную!
+func WithCategoryEnabled() OpFunc {
+	return func(query *orm.Query) {
+		Filter{Field: "category." + Columns.Category.StatusID, Value: StatusEnabled, SearchType: SearchTypeEquals}.Apply(query)
+	}
+}
+
+// WithPublishedBefore is a function that adds "publishedAt" < time filter to query. Добавлено вручную!
+func WithPublishedBefore(beforeTime interface{}) OpFunc {
+	return func(query *orm.Query) {
+		Filter{Field: Columns.News.PublishedAt, Value: beforeTime, SearchType: SearchTypeLess}.Apply(query)
+	}
+}
+
 // WithJoinedIDs adds join VALUES statement for given table and column.
 func WithJoinedIDs(ids []int, tableAlias, column string) OpFunc {
 	return func(q *orm.Query) {
