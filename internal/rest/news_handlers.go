@@ -1,19 +1,12 @@
 package rest
 
 import (
-	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/daniilsolovey/news-portal/internal/newsportal"
 	"github.com/labstack/echo/v4"
-)
-
-const (
-	defaultPage     = 1
-	defaultPageSize = 10
-	maxPageSize     = 100
 )
 
 type NewsRequest struct {
@@ -63,13 +56,8 @@ func (h *NewsHandler) News(c echo.Context) error {
 		return h.handleError(c, err, http.StatusBadRequest, "invalid request parameters")
 	}
 
-	page, pageSize, err := validatePagination(req.Page, req.PageSize)
-	if err != nil {
-		return h.handleError(c, err, http.StatusBadRequest, "invalid pagination parameters")
-	}
-
 	newsportalSummaries, err := h.uc.NewsByFilter(
-		c.Request().Context(), req.TagID, req.CategoryID, page, pageSize,
+		c.Request().Context(), req.TagID, req.CategoryID, req.Page, req.PageSize,
 	)
 	if err != nil {
 		return h.handleError(c, err, http.StatusInternalServerError, "internal error")
@@ -169,27 +157,4 @@ func (h *NewsHandler) Tags(c echo.Context) error {
 
 	result := NewTags(tags)
 	return c.JSON(http.StatusOK, result)
-}
-
-func validatePagination(page, pageSize *int) (int, int, error) {
-	p := defaultPage
-	if page != nil {
-		if *page <= 0 {
-			return 0, 0, errors.New("invalid page")
-		}
-		p = *page
-	}
-
-	ps := defaultPageSize
-	if pageSize != nil {
-		if *pageSize <= 0 {
-			return 0, 0, errors.New("invalid pageSize")
-		}
-		ps = *pageSize
-		if ps > maxPageSize {
-			ps = maxPageSize
-		}
-	}
-
-	return p, ps, nil
 }
