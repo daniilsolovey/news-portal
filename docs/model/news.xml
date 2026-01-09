@@ -30,6 +30,9 @@
                 <Search Name="TitleILike" AttrName="Title" SearchType="SEARCHTYPE_ILIKE"></Search>
                 <Search Name="ContentILike" AttrName="Content" SearchType="SEARCHTYPE_ILIKE"></Search>
                 <Search Name="AuthorILike" AttrName="Author" SearchType="SEARCHTYPE_ILIKE"></Search>
+                <Search Name="CategoryStatus" AttrName="Category.StatusID" SearchType="SEARCHTYPE_EQUALS"></Search>
+                <Search Name="Tag" AttrName="TagIDs" SearchType="SEARCHTYPE_ARRAY_CONTAINS"></Search>
+                <Search Name="PublishedAtLE" AttrName="PublishedAt" SearchType="SEARCHTYPE_LE"></Search>
             </Searches>
         </Entity>
         <Entity Name="Tag" Namespace="news" Table="tags">

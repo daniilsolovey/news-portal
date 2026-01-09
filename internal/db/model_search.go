@@ -103,18 +103,21 @@ func (cs *CategorySearch) Q() applier {
 type NewsSearch struct {
 	search
 
-	ID           *int
-	CategoryID   *int
-	Title        *string
-	Content      *string
-	Author       *string
-	PublishedAt  *time.Time
-	UpdatedAt    *time.Time
-	StatusID     *int
-	IDs          []int
-	TitleILike   *string
-	ContentILike *string
-	AuthorILike  *string
+	ID             *int
+	CategoryID     *int
+	Title          *string
+	Content        *string
+	Author         *string
+	PublishedAt    *time.Time
+	UpdatedAt      *time.Time
+	StatusID       *int
+	IDs            []int
+	TitleILike     *string
+	ContentILike   *string
+	AuthorILike    *string
+	CategoryStatus *int
+	Tag            *int
+	PublishedAtLE  *time.Time
 }
 
 func (ns *NewsSearch) Apply(query *orm.Query) *orm.Query {
@@ -156,6 +159,15 @@ func (ns *NewsSearch) Apply(query *orm.Query) *orm.Query {
 	}
 	if ns.AuthorILike != nil {
 		Filter{Columns.News.Author, *ns.AuthorILike, SearchTypeILike, false}.Apply(query)
+	}
+	if ns.CategoryStatus != nil {
+		Filter{"category.statusId", *ns.CategoryStatus, SearchTypeEquals, false}.Apply(query)
+	}
+	if ns.Tag != nil {
+		Filter{Columns.News.TagIDs, *ns.Tag, SearchTypeArrayContains, false}.Apply(query)
+	}
+	if ns.PublishedAtLE != nil {
+		Filter{Columns.News.PublishedAt, *ns.PublishedAtLE, SearchTypeLE, false}.Apply(query)
 	}
 
 	ns.apply(query)
