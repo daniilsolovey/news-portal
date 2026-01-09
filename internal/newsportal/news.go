@@ -52,6 +52,10 @@ func (u *Manager) NewsByFilter(ctx context.Context, tagID, categoryID *int, page
 		withTagIDFilter(tagID),
 	)
 
+	if err != nil {
+		return nil, fmt.Errorf("db get news by filters: %w", err)
+	}
+
 	newsList := NewNewsList(dbNews)
 
 	err = u.fillTags(ctx, newsList)
