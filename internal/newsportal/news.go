@@ -27,14 +27,6 @@ func NewNewsManager(dbc orm.DB) *Manager {
 	}
 }
 
-func withTagIDFilter(tagID *int) db.OpFunc {
-	return func(query *orm.Query) {
-		if tagID != nil {
-			db.Filter{Field: db.Columns.News.TagIDs, Value: *tagID, SearchType: db.SearchTypeArrayContains}.Apply(query)
-		}
-	}
-}
-
 // NewsByFilter retrieves news with optional filtering by tagID and categoryID, with pagination
 // Returns NewsSummary (without content) sorted by publishedAt DESC
 func (u *Manager) NewsByFilter(ctx context.Context, tagID, categoryID *int, page, pageSize *int) ([]News, error) {
@@ -42,10 +34,16 @@ func (u *Manager) NewsByFilter(ctx context.Context, tagID, categoryID *int, page
 	if err != nil {
 		return nil, fmt.Errorf("invalid pagination parameters: %w", err)
 	}
+
 	status := StatusPublished
 	now := time.Now()
 
-	dbNews, err := u.repo.NewsByFilters(ctx, &db.NewsSearch{CategoryID: categoryID, StatusID: &status, CategoryStatus: &status, Tag: tagID, PublishedAtLE: &now},
+	dbNews, err := u.repo.NewsByFilters(ctx, &db.NewsSearch{
+		CategoryID:     categoryID,
+		CategoryStatus: &status,
+		Tag:            tagID,
+		PublishedAtLE:  &now,
+	},
 		db.NewPager(p, ps),
 		db.WithRelations(db.Columns.News.Category),
 		db.WithSort(db.NewSortField(db.Columns.News.PublishedAt, true)),
@@ -68,7 +66,12 @@ func (u *Manager) NewsByFilter(ctx context.Context, tagID, categoryID *int, page
 func (u *Manager) NewsCount(ctx context.Context, tagID, categoryID *int) (int, error) {
 	status := StatusPublished
 	now := time.Now()
-	count, err := u.repo.CountNews(ctx, &db.NewsSearch{CategoryID: categoryID, StatusID: &status, CategoryStatus: &status, Tag: tagID, PublishedAtLE: &now},
+	count, err := u.repo.CountNews(ctx, &db.NewsSearch{
+		CategoryID:     categoryID,
+		CategoryStatus: &status,
+		Tag:            tagID,
+		PublishedAtLE:  &now,
+	},
 		db.WithRelations(db.Columns.News.Category),
 	)
 	if err != nil {
@@ -82,7 +85,12 @@ func (u *Manager) NewsByID(ctx context.Context, newsID int) (*News, error) {
 	status := StatusPublished
 	now := time.Now()
 
-	dbNews, err := u.repo.OneNews(ctx, &db.NewsSearch{ID: &newsID, CategoryStatus: &status, PublishedAtLE: &now}, db.WithRelations(db.Columns.News.Category))
+	dbNews, err := u.repo.OneNews(ctx, &db.NewsSearch{
+		ID:             &newsID,
+		CategoryStatus: &status,
+		PublishedAtLE:  &now,
+	},
+		db.WithRelations(db.Columns.News.Category))
 	if err != nil {
 		return nil, fmt.Errorf("db get news by id: %w", err)
 	} else if dbNews == nil {

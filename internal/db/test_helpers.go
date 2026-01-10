@@ -102,7 +102,7 @@ func LoadTestData(ctx context.Context, database *pg.DB) error {
 		return fmt.Errorf("insert statuses: %w", err)
 	}
 
-		categories := []Category{
+	categories := []Category{
 		{Title: "Technology", OrderNumber: 1, StatusID: 1},
 		{Title: "Sports", OrderNumber: 2, StatusID: 1},
 		{Title: "Politics", OrderNumber: 3, StatusID: 1},

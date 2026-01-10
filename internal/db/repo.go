@@ -1,5 +1,7 @@
 package db
 
+// deprecated package, updated to use mfd generator for db operations
+// TODO: remove this package
 import (
 	"context"
 	"errors"
@@ -16,7 +18,6 @@ const (
 type Repository struct {
 	db pg.DBI
 }
-
 
 func (r *Repository) Ping(ctx context.Context) error {
 	if db, ok := r.db.(*pg.DB); ok {
