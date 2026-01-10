@@ -19,3 +19,9 @@ type News struct {
 	Category Category
 	Tags     []Tag
 }
+
+type NewsFilter struct {
+	TagID      *int
+	CategoryID *int
+}
+

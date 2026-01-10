@@ -1,19 +1,9 @@
-services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: news-portal-app
-    ports:
-      - "3000:3000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
+version: "3.9"
 
+services:
   postgres:
-    image: postgres:15
-    container_name: postgres-news-portal-app
+    image: postgres:15-alpine
+    container_name: news-portal-postgres
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
@@ -22,12 +12,37 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d news_portal"]
+      test: ["CMD-SHELL", "pg_isready -U user"]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+    networks:
+      - news-portal-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: news-portal-app
+    ports:
+      - "3000:3000"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+      - 1.1.1.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - news-portal-network
 
 volumes:
   pgdata:
+    driver: local
+
+networks:
+  news-portal-network:
+    driver: bridge

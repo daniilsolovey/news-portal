@@ -7,8 +7,6 @@ import (
 	"net/http"
 
 	db "github.com/daniilsolovey/news-portal/internal/db"
-	"github.com/daniilsolovey/news-portal/internal/newsportal"
-	"github.com/daniilsolovey/news-portal/internal/rest"
 	"github.com/go-pg/pg/v10"
 	"github.com/labstack/echo/v4"
 )
@@ -30,15 +28,16 @@ type Config struct {
 
 func New(cfg Config, dbConnect *pg.DB, logger *slog.Logger) *App {
 	database := db.New(dbConnect)
-	handler := rest.NewNewsHandler(
-		newsportal.NewNewsManager(database),
-		logger,
-	)
+	// for rest api:
+	// handler := rest.NewNewsHandler(
+	// 	newsportal.NewNewsManager(database),
+	// 	logger,
+	// )
 
 	return &App{
 		DB:     database,
 		Logger: logger,
-		Echo:   handler.RegisterRoutes(),
+		Echo:   echo.New(),
 		Config: cfg,
 	}
 }
