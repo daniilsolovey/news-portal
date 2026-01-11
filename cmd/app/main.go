@@ -3,13 +3,10 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -17,11 +14,7 @@ import (
 	_ "github.com/daniilsolovey/news-portal/docs"
 	"github.com/daniilsolovey/news-portal/internal/app"
 	db "github.com/daniilsolovey/news-portal/internal/db"
-	"github.com/daniilsolovey/news-portal/internal/newsportal"
-	"github.com/daniilsolovey/news-portal/internal/rpc"
 	"github.com/go-pg/pg/v10"
-	"github.com/labstack/echo/v4"
-	"github.com/vmkteam/zenrpc/v2"
 )
 
 var (
@@ -39,58 +32,24 @@ var (
 
 func main() {
 	flag.Parse()
+
 	lg = newLogger(*flDebug)
-
 	loadConfig()
-
-	dbConnection := initializeDatabase()
-	defer dbConnection.Close()
-
 	ctx := context.Background()
 
-	rpcServer := initializeRPCServer(dbConnection)
+	dbConnection := pg.Connect(&cfg.Database)
+	err := dbConnection.Ping(ctx)
+	exitOnError(err)
+	defer dbConnection.Close()
+	database := db.New(dbConnection)
 
-	service := setupRoutes(dbConnection, rpcServer)
-
+	service := app.New(cfg, database, lg)
 	runServer(ctx, service)
 }
 
 func loadConfig() {
 	_, err := toml.DecodeFile(*flConfig, &cfg)
 	exitOnError(err)
-}
-
-func initializeDatabase() *pg.DB {
-	dbConnection := pg.Connect(&cfg.Database)
-	err := dbConnection.Ping(context.Background())
-	exitOnError(err)
-	return dbConnection
-}
-
-func initializeRPCServer(dbConnection *pg.DB) *zenrpc.Server {
-	database := db.New(dbConnection)
-	newsManager := newsportal.NewNewsManager(database)
-	rpcService := rpc.NewNewsService(newsManager)
-
-	rpcServer := zenrpc.NewServer(zenrpc.Options{ExposeSMD: true})
-	rpcServer.Register("news", *rpcService)
-	rpcServer.Register("", *rpcService) // public
-	rpcServer.Use(zenrpc.Logger(log.New(os.Stderr, "", log.LstdFlags)))
-
-	return rpcServer
-}
-
-func setupRoutes(dbConnection *pg.DB, rpcServer *zenrpc.Server) *app.App {
-	service := app.New(cfg, dbConnection, lg)
-
-	service.Echo.Any("/rpc", echo.WrapHandler(rpcServer))
-	service.Echo.Any("/doc/", echo.WrapHandler(http.HandlerFunc(zenrpc.SMDBoxHandler)))
-
-	// Frontend static files
-	service.Echo.Static("/static", "./frontend")
-	service.Echo.GET("/*", handleFrontend)
-
-	return service
 }
 
 func runServer(ctx context.Context, service *app.App) {
@@ -135,20 +94,4 @@ func exitOnError(err error) {
 		lg.Error("app init failed", "error", err)
 		os.Exit(1)
 	}
-}
-
-func handleFrontend(c echo.Context) error {
-	if c.Request().Method != http.MethodGet {
-		return echo.ErrMethodNotAllowed
-	}
-
-	p := c.Request().URL.Path
-	if p == "/" || p == "/index.html" {
-		p = "index.html"
-	}
-
-	p = strings.TrimPrefix(p, "/")
-	filePath := filepath.Join("./frontend", p)
-
-	return c.File(filePath)
 }

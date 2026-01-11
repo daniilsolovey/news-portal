@@ -35,33 +35,107 @@ Returns NewsSummary (without content) sorted by publishedAt DESC.`,
 						TypeName: "NewsFilter",
 						Properties: smd.PropertyList{
 							{
-								Name:     "tagId",
-								Optional: true,
-								Type:     smd.Integer,
+								Name:        "tagId",
+								Optional:    true,
+								Description: `tagId optional tag filter`,
+								Type:        smd.Integer,
 							},
 							{
-								Name:     "categoryId",
-								Optional: true,
-								Type:     smd.Integer,
+								Name:        "categoryId",
+								Optional:    true,
+								Description: `categoryId optional category filter`,
+								Type:        smd.Integer,
 							},
 							{
-								Name:     "page",
-								Optional: true,
-								Type:     smd.Integer,
+								Name:        "page",
+								Optional:    true,
+								Description: `page=1 page number (1-based)`,
+								Type:        smd.Integer,
 							},
 							{
-								Name:     "pageSize",
-								Optional: true,
-								Type:     smd.Integer,
+								Name:        "pageSize",
+								Optional:    true,
+								Description: `pageSize=10 items per page`,
+								Type:        smd.Integer,
 							},
 						},
 					},
 				},
 				Returns: smd.JSONSchema{
-					Description: `list of news summaries`,
-					Type:        smd.Object,
-					TypeName:    "NewsSummaries",
-					Properties:  smd.PropertyList{},
+					Type:     smd.Array,
+					TypeName: "[]NewsSummary",
+					Items: map[string]string{
+						"$ref": "#/definitions/NewsSummary",
+					},
+					Definitions: map[string]smd.Definition{
+						"NewsSummary": {
+							Type: "object",
+							Properties: smd.PropertyList{
+								{
+									Name: "newsId",
+									Type: smd.Integer,
+								},
+								{
+									Name: "categoryId",
+									Type: smd.Integer,
+								},
+								{
+									Name: "title",
+									Type: smd.String,
+								},
+								{
+									Name: "author",
+									Type: smd.String,
+								},
+								{
+									Name: "publishedAt",
+									Type: smd.String,
+								},
+								{
+									Name: "category",
+									Ref:  "#/definitions/Category",
+									Type: smd.Object,
+								},
+								{
+									Name: "tags",
+									Type: smd.Array,
+									Items: map[string]string{
+										"$ref": "#/definitions/Tag",
+									},
+								},
+							},
+						},
+						"Category": {
+							Type: "object",
+							Properties: smd.PropertyList{
+								{
+									Name: "categoryId",
+									Type: smd.Integer,
+								},
+								{
+									Name: "title",
+									Type: smd.String,
+								},
+							},
+						},
+						"Tag": {
+							Type: "object",
+							Properties: smd.PropertyList{
+								{
+									Name: "tagId",
+									Type: smd.Integer,
+								},
+								{
+									Name: "title",
+									Type: smd.String,
+								},
+								{
+									Name: "statusId",
+									Type: smd.Integer,
+								},
+							},
+						},
+					},
 				},
 				Errors: map[int]string{
 					500: "internal server error",
@@ -73,17 +147,31 @@ Returns NewsSummary (without content) sorted by publishedAt DESC.`,
 					{
 						Name:     "filter",
 						Type:     smd.Object,
-						TypeName: "NewsCountRequest",
+						TypeName: "NewsFilter",
 						Properties: smd.PropertyList{
 							{
-								Name:     "tagId",
-								Optional: true,
-								Type:     smd.Integer,
+								Name:        "tagId",
+								Optional:    true,
+								Description: `tagId optional tag filter`,
+								Type:        smd.Integer,
 							},
 							{
-								Name:     "categoryId",
-								Optional: true,
-								Type:     smd.Integer,
+								Name:        "categoryId",
+								Optional:    true,
+								Description: `categoryId optional category filter`,
+								Type:        smd.Integer,
+							},
+							{
+								Name:        "page",
+								Optional:    true,
+								Description: `page=1 page number (1-based)`,
+								Type:        smd.Integer,
+							},
+							{
+								Name:        "pageSize",
+								Optional:    true,
+								Description: `pageSize=10 items per page`,
+								Type:        smd.Integer,
 							},
 						},
 					},
@@ -100,22 +188,15 @@ Returns NewsSummary (without content) sorted by publishedAt DESC.`,
 				Description: `ByID retrieves a single news item by ID with full content, category and tags.`,
 				Parameters: []smd.JSONSchema{
 					{
-						Name:     "req",
-						Type:     smd.Object,
-						TypeName: "NewsByIDRequest",
-						Properties: smd.PropertyList{
-							{
-								Name: "id",
-								Type: smd.Integer,
-							},
-						},
+						Name:        "id",
+						Description: `news numeric ID`,
+						Type:        smd.Integer,
 					},
 				},
 				Returns: smd.JSONSchema{
-					Description: `news with full content`,
-					Optional:    true,
-					Type:        smd.Object,
-					TypeName:    "News",
+					Optional: true,
+					Type:     smd.Object,
+					TypeName: "News",
 					Properties: smd.PropertyList{
 						{
 							Name: "newsId",
@@ -197,10 +278,9 @@ Returns NewsSummary (without content) sorted by publishedAt DESC.`,
 				Description: `Categories retrieves all categories ordered by orderNumber.`,
 				Parameters:  []smd.JSONSchema{},
 				Returns: smd.JSONSchema{
-					Description: `list of categories`,
-					Type:        smd.Object,
-					TypeName:    "Categories",
-					Properties:  smd.PropertyList{},
+					Type:       smd.Object,
+					TypeName:   "Categories",
+					Properties: smd.PropertyList{},
 				},
 				Errors: map[int]string{
 					404: "categories not found",
@@ -211,10 +291,9 @@ Returns NewsSummary (without content) sorted by publishedAt DESC.`,
 				Description: `Tags retrieves all tags ordered by title.`,
 				Parameters:  []smd.JSONSchema{},
 				Returns: smd.JSONSchema{
-					Description: `list of tags`,
-					Type:        smd.Object,
-					TypeName:    "Tags",
-					Properties:  smd.PropertyList{},
+					Type:       smd.Object,
+					TypeName:   "Tags",
+					Properties: smd.PropertyList{},
 				},
 				Errors: map[int]string{
 					404: "tags not found",
@@ -252,7 +331,7 @@ func (s NewsService) Invoke(ctx context.Context, method string, params json.RawM
 
 	case RPC.NewsService.Count:
 		var args = struct {
-			Filter NewsCountRequest `json:"filter"`
+			Filter NewsFilter `json:"filter"`
 		}{}
 
 		if zenrpc.IsArray(params) {
@@ -271,11 +350,11 @@ func (s NewsService) Invoke(ctx context.Context, method string, params json.RawM
 
 	case RPC.NewsService.ByID:
 		var args = struct {
-			Req NewsByIDRequest `json:"req"`
+			Id int `json:"id"`
 		}{}
 
 		if zenrpc.IsArray(params) {
-			if params, err = zenrpc.ConvertToObject([]string{"req"}, params); err != nil {
+			if params, err = zenrpc.ConvertToObject([]string{"id"}, params); err != nil {
 				return zenrpc.NewResponseError(nil, zenrpc.InvalidParams, "", err.Error())
 			}
 		}
@@ -286,7 +365,7 @@ func (s NewsService) Invoke(ctx context.Context, method string, params json.RawM
 			}
 		}
 
-		resp.Set(s.ByID(ctx, args.Req))
+		resp.Set(s.ByID(ctx, args.Id))
 
 	case RPC.NewsService.Categories:
 		resp.Set(s.Categories(ctx))

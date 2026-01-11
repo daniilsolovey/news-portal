@@ -7,10 +7,14 @@ import (
 )
 
 type NewsFilter struct {
-	TagID      *int `json:"tagId,omitempty"`
+	//tagId optional tag filter
+	TagID *int `json:"tagId,omitempty"`
+	//categoryId optional category filter
 	CategoryID *int `json:"categoryId,omitempty"`
-	Page       *int `json:"page,omitempty"`
-	PageSize   *int `json:"pageSize,omitempty"`
+	//page=1 page number (1-based)
+	Page *int `json:"page,omitempty"`
+	//pageSize=10 items per page
+	PageSize *int `json:"pageSize,omitempty"`
 }
 
 func (f NewsFilter) ToModel() *newsportal.NewsFilter {
@@ -18,15 +22,6 @@ func (f NewsFilter) ToModel() *newsportal.NewsFilter {
 		TagID:      f.TagID,
 		CategoryID: f.CategoryID,
 	}
-}
-
-type NewsCountRequest struct {
-	TagID      *int `json:"tagId,omitempty"`
-	CategoryID *int `json:"categoryId,omitempty"`
-}
-
-type NewsByIDRequest struct {
-	ID int `json:"id"`
 }
 
 type Category struct {

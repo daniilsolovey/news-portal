@@ -22,13 +22,8 @@ func NewNewsService(manager *newsportal.Manager) *NewsService {
 // List retrieves news with optional filtering by tagId and categoryId, with pagination.
 // Returns NewsSummary (without content) sorted by publishedAt DESC.
 //
-//zenrpc:tagId optional tag filter
-//zenrpc:categoryId optional category filter
-//zenrpc:page=1 page number (1-based)
-//zenrpc:pageSize=10 items per page
-//zenrpc:return list of news summaries
 //zenrpc:500 internal server error
-func (s *NewsService) List(ctx context.Context, filter NewsFilter) (NewsSummaries, error) {
+func (s *NewsService) List(ctx context.Context, filter NewsFilter) ([]NewsSummary, error) {
 	newsportalSummaries, err := s.manager.NewsByFilter(
 		ctx,
 		filter.TagID,
@@ -42,11 +37,9 @@ func (s *NewsService) List(ctx context.Context, filter NewsFilter) (NewsSummarie
 
 // Count returns the count of news matching the optional tagId and categoryId filters.
 //
-//zenrpc:tagId optional tag filter
-//zenrpc:categoryId optional category filter
 //zenrpc:return count of news items
 //zenrpc:500 internal server error
-func (s *NewsService) Count(ctx context.Context, filter NewsCountRequest) (int, error) {
+func (s *NewsService) Count(ctx context.Context, filter NewsFilter) (int, error) {
 	count, err := s.manager.NewsCount(ctx, filter.TagID, filter.CategoryID)
 	return count, err
 }
@@ -54,16 +47,15 @@ func (s *NewsService) Count(ctx context.Context, filter NewsCountRequest) (int, 
 // ByID retrieves a single news item by ID with full content, category and tags.
 //
 //zenrpc:id news numeric ID
-//zenrpc:return news with full content
 //zenrpc:400 id must be positive
 //zenrpc:404 news not found
 //zenrpc:500 internal server error
-func (s *NewsService) ByID(ctx context.Context, req NewsByIDRequest) (*News, error) {
-	if req.ID <= 0 {
+func (s *NewsService) ByID(ctx context.Context, id int) (*News, error) {
+	if id <= 0 {
 		return nil, zenrpc.NewStringError(400, "id must be positive")
 	}
 
-	newsportalNews, err := s.manager.NewsByID(ctx, req.ID)
+	newsportalNews, err := s.manager.NewsByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +70,6 @@ func (s *NewsService) ByID(ctx context.Context, req NewsByIDRequest) (*News, err
 
 // Categories retrieves all categories ordered by orderNumber.
 //
-//zenrpc:return list of categories
 //zenrpc:404 categories not found
 //zenrpc:500 internal server error
 func (s *NewsService) Categories(ctx context.Context) (Categories, error) {
@@ -96,7 +87,6 @@ func (s *NewsService) Categories(ctx context.Context) (Categories, error) {
 
 // Tags retrieves all tags ordered by title.
 //
-//zenrpc:return list of tags
 //zenrpc:404 tags not found
 //zenrpc:500 internal server error
 func (s *NewsService) Tags(ctx context.Context) (Tags, error) {
