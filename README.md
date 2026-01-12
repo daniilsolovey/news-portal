@@ -1,6 +1,6 @@
 # News Portal
 
-A Go-based microservice template with clean architecture, dependency injection (Wire), and PostgreSQL support.
+A Go-based news portal application with clean architecture, RPC and REST API support, and PostgreSQL database.
 
 ## 🎥 Demo
 
@@ -13,17 +13,17 @@ A Go-based microservice template with clean architecture, dependency injection (
                 │   Client   │
                 │  (Browser) │
                 └─────┬──────┘
-                      │ HTTP (Gin)
+                      │ HTTP (Echo)
                 ┌─────▼──────┐
-                │  Delivery  │  ← HTTP handlers, Static files, Swagger
+                │    App     │  ← HTTP server, Static files, RPC
                 └─────┬──────┘
                       │
                 ┌─────▼──────┐
-                │  UseCase   │  ← Business logic
+                │  Manager   │  ← Business logic (newsportal)
                 └─────┬──────┘
                       │
             ┌─────────▼─────────┐
-            │     Repository    │  ← PostgreSQL access
+            │     Repository    │  ← Database access (go-pg)
             └────────┬──────────┘
                      │
        ┌─────────────▼─────────────┐
@@ -35,29 +35,28 @@ A Go-based microservice template with clean architecture, dependency injection (
 
 ```
 .
-├── cmd/app              # Entry-point and dependency initialization (Wire)
-│   └── wire            # Dependency injection setup
-├── configs              # Application configuration (Viper)
+├── cmd/app              # Entry-point and application initialization
 ├── internal
-│   ├── delivery         # HTTP endpoints (Gin handlers)
-│   ├── usecase          # Business logic layer
-│   ├── domain           # Domain models and conversions
-│   └── repository       # Data access layer
-│       └── postgres     # PostgreSQL implementation
+│   ├── app              # Application setup and routing
+│   ├── db               # Database layer (go-pg models, repositories)
+│   ├── newsportal       # Business logic layer (Manager)
+│   ├── rest             # REST API handlers (available, not active)
+│   └── rpc              # RPC handlers (zenrpc)
 ├── frontend             # Frontend web interface
 │   ├── index.html       # Main HTML page
 │   ├── app.js           # JavaScript application logic
 │   └── styles.css       # CSS styles
-├── docs                 # Swagger documentation
-├── envs                 # .env files
-├── migrations           # Database migrations
+├── docs                 # Documentation and migrations
+│   ├── patches          # Database migrations (goose)
+│   └── swagger.*        # Swagger documentation (generated)
+├── config.toml          # Application configuration (TOML)
 ├── Makefile             # Build/run commands
 └── docker-compose.yml   # Docker infrastructure
 ```
 
 ## 🚀 Quick Start
 
-Make sure you have `Docker`, `Make`, `Go`, and `Swag` installed.
+Make sure you have `Docker`, `Make`, and `Go` installed.
 
 ### Start the service
 
@@ -65,7 +64,7 @@ Make sure you have `Docker`, `Make`, `Go`, and `Swag` installed.
 make docker-up
 ```
 
-The default environment file is `./envs/.env.dev`.
+The application uses `config.toml` for configuration.
 
 ### Stop the service
 
@@ -93,6 +92,8 @@ make build
 make run
 ```
 
+**Note**: Make sure PostgreSQL is running and accessible. Update `config.toml` with your database connection settings.
+
 ### Format, validate and manage dependencies
 
 ```bash
@@ -107,24 +108,12 @@ make tidy    # go mod tidy
 make test
 ```
 
-### Regenerate Wire dependencies
+### Run integration tests
 
 ```bash
-cd cmd/app/wire && go generate
-```
-
-## 📚 Swagger Documentation
-
-To generate:
-
-```bash
-make swag
-```
-
-Available after startup at:
-
-```
-http://localhost:3000/swagger/index.html
+make test-db-up          # Start test database
+make test-integration    # Run integration tests
+make test-db-down        # Stop test database
 ```
 
 ## 🖥️ Frontend Interface
@@ -162,64 +151,120 @@ The interface features:
 - `frontend/app.js` - JavaScript logic for API calls and UI updates
 - `frontend/styles.css` - Modern CSS styling with gradients and animations
 
-The frontend is automatically served by the Gin router at the root path (`/`) and static files are available at `/static/`.
+The frontend is automatically served by the Echo router at the root path (`/`) and static files are available at `/static/`.
 
 ## 🔌 API Endpoints
 
-The service provides the following REST API endpoints:
+### RPC API (Active)
 
-- `GET /` - Frontend web interface
-- `GET /static/*` - Static frontend files (CSS, JS)
-- `GET /api/v1/all_news` - Get all news with optional filtering by tagId and categoryId, with pagination
-- `GET /api/v1/count` - Get total count of news items
-- `GET /api/v1/news/:id` - Get news item by ID with full content
+The service provides a JSON-RPC 2.0 API using [zenrpc](https://github.com/vmkteam/zenrpc):
+
+- `POST /rpc` - JSON-RPC endpoint
+- `GET /doc/*` - Service Method Discovery (SMD) documentation
+
+**Available RPC Methods:**
+- `news.List(filter)` - Get all news with optional filtering by tagId and categoryId, with pagination
+- `news.Count(filter)` - Get total count of news items
+- `news.ByID(id)` - Get news item by ID with full content
+- `news.Categories()` - Get all categories
+- `news.Tags()` - Get all tags
+
+### REST API (Available but not active)
+
+REST API handlers are implemented in `internal/rest` but currently commented out in `app.go`. To enable:
+
+1. Uncomment the REST handler initialization in `internal/app/app.go`
+2. Register REST routes in the Echo router
+
+**Available REST Endpoints** (when enabled):
+- `GET /api/v1/news` - Get all news with optional filtering
+- `GET /api/v1/news/count` - Get total count of news items
+- `GET /api/v1/news/:id` - Get news item by ID
 - `GET /api/v1/categories` - Get all categories
 - `GET /api/v1/tags` - Get all tags
 - `GET /health` - Health check endpoint
-- `GET /swagger/*any` - Swagger documentation UI
+
+### Static Files
+
+- `GET /` - Frontend web interface
+- `GET /static/*` - Static frontend files (CSS, JS)
+
+## 📚 Swagger Documentation
+
+Swagger documentation can be generated (but is not currently integrated in routes):
+
+```bash
+make swag
+```
+
+The generated documentation is available in `docs/swagger.json` and `docs/swagger.yaml`.
 
 ## 📝 Example Makefile Commands
 
 ```bash
-make docker-up    # start containers
-make docker-down  # stop containers
-make logs         # view logs
-make swag         # generate Swagger
-make build        # build Go binary
-make run          # run application locally
-make test         # run tests
+make docker-up         # start containers
+make docker-down       # stop containers
+make restart           # restart containers
+make logs              # view logs
+make swag              # generate Swagger
+make build             # build Go binary
+make run               # run application locally
+make test              # run tests
+make test-integration  # run integration tests
+make test-db-up        # start test database
+make test-db-down      # stop test database
 ```
 
-## 🏗 Template Features
+## 🏗 Features
 
-- **Clean Architecture**: Separation of concerns with delivery, usecase, and repository layers
-- **Dependency Injection**: Google Wire for compile-time DI
-- **Database Support**: PostgreSQL with connection pooling
-- **API**: REST API with Gin framework
+- **Clean Architecture**: Separation of concerns with business logic, repository, and API layers
+- **Database Support**: PostgreSQL with go-pg ORM and connection pooling
+- **RPC API**: JSON-RPC 2.0 API with zenrpc framework
+- **REST API**: RESTful API handlers (available, can be enabled)
 - **Frontend Interface**: Modern web-based UI for API interaction
 - **Static File Serving**: Built-in static file server for frontend assets
 - **Graceful Shutdown**: Graceful shutdown with 5-second timeout for HTTP server
-- **Documentation**: Swagger/OpenAPI documentation
-- **Configuration**: Viper for configuration management
-- **Migrations**: Database migration support
+- **Configuration**: TOML-based configuration management
+- **Migrations**: Database migration support with goose
+- **Logging**: Structured logging with slog
 
 ## 🔧 Configuration
 
-Configuration is managed via environment variables or `.env` files. Default values are set in `configs/config.go`.
+Configuration is managed via TOML file (`config.toml`). The default configuration file is `config.toml` in the project root.
 
-Key environment variables:
-- `HTTP_PORT` - HTTP server port (default: 3000)
-- `DATABASE_URL` - PostgreSQL connection string
-- `DB_MAX_CONNS` - Maximum number of database connections (default: 5)
-- `DB_MAX_CONN_LIFETIME` - Maximum connection lifetime (default: 300s)
+### Configuration Structure
+
+```toml
+[Database]
+Addr     = "postgres:5432"
+User     = "user"
+Database = "news_portal"
+Password = "password"
+PoolSize = 5
+
+[App]
+Host = "0.0.0.0"
+Port = 3000
+```
+
+### Command Line Options
+
+- `-config` - Path to TOML configuration file (default: `config.toml`)
+- `-debug` - Enable debug mode for logging
+
+Example:
+
+```bash
+./news-portal -config config.toml -debug
+```
 
 ## 🗄 Database Migrations
 
-The project uses [goose](https://github.com/pressly/goose) for database migrations. Migrations are located in the `migrations/` directory.
+The project uses [goose](https://github.com/pressly/goose) for database migrations. Migrations are located in the `docs/patches/` directory.
 
 ### Automatic Migrations (Docker)
 
-When running with Docker (`make docker-up`), migrations are automatically executed before the application starts. The Dockerfile includes goose and runs migrations on container startup.
+When running with Docker (`make docker-up`), the application waits for PostgreSQL to be ready before starting. Migrations should be run manually or integrated into your deployment process.
 
 ### Manual Migrations
 
@@ -232,50 +277,41 @@ go install github.com/pressly/goose/v3/cmd/goose@latest
 Then run migrations:
 
 ```bash
-goose -dir ./migrations postgres "postgres://user:password@localhost:5432/news_portal?sslmode=disable" up
+goose -dir ./docs/patches postgres "postgres://user:password@localhost:5432/news_portal?sslmode=disable" up
 ```
-
-## 🔌 Dependency Injection (Wire)
-
-This project uses [Google Wire](https://github.com/google/wire) for dependency injection at compile time. All application components are initialized through Wire providers.
-
-### Initialization Flow
-
-Wire automatically resolves and initializes dependencies in the following order:
-
-1. **Logger** (`ProvideLogger`) - Creates structured logger
-2. **PostgreSQL Repository** (`ProvidePostgres`) - Initializes database connection pool
-3. **Repository** (`ProvideRepository`) - Creates repository interface wrapper
-4. **UseCase** (`ProvideUseCase`) - Initializes business logic layer with repository and logger
-5. **Handler** (`ProvideHandler`) - Creates HTTP handlers with usecase and logger
-6. **Engine** (`ProvideEngine`) - Creates Gin router with all registered routes
-
-### Service Structure
-
-The `wire.Service` struct contains all initialized components:
-
-```go
-type Service struct {
-    Postgres *postgres.Repository
-    Logger   *slog.Logger
-    Engine   *gin.Engine
-}
-```
-
-### Adding New Providers
-
-To add new dependencies via Wire:
-
-1. Create a provider function in `cmd/app/wire/providers.go`
-2. Add it to `wire.Build()` in `cmd/app/wire/wire.go`
-3. Regenerate Wire code: `cd cmd/app/wire && go generate`
 
 ## 📦 Adding New Features
 
-1. **Domain Models**: Add to `internal/domain/`
-2. **Business Logic**: Implement in `internal/usecase/`
-3. **HTTP Handlers**: Add to `internal/delivery/`
-4. **Database Operations**: Implement in `internal/repository/postgres/`
-5. **Routes**: Register in your handler's `RegisterRoutes()` method
+1. **Database Models**: Add to `internal/db/` (use genna or mfd-generator for model generation)
+2. **Business Logic**: Implement in `internal/newsportal/`
+3. **RPC Handlers**: Add to `internal/rpc/`
+4. **REST Handlers**: Add to `internal/rest/` (and enable in `internal/app/app.go`)
+5. **Database Operations**: Implement in `internal/db/` repositories
+
+## 🔧 Code Generation
+
+The project uses code generation tools:
+
+### Model Generation
+
+- **genna**: Generate Go models from PostgreSQL schema
+  ```bash
+  make genna
+  ```
+
+- **mfd-generator**: Generate models and repositories from MFD files
+  ```bash
+  make mfd-model  # Generate models
+  make mfd-repo   # Generate repositories
+  make mfd-xml    # Generate XML from database
+  ```
+
+### RPC Code Generation
+
+RPC service code is generated using zenrpc:
+
+```bash
+cd internal/rpc && go generate
+```
 
 ---
