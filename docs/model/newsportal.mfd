@@ -1,0 +1,14 @@
+<Project xmlns:xsi="" xmlns:xsd="">
+    <Name>newsportal.mfd</Name>
+    <PackageNames>
+        <string>news</string>
+    </PackageNames>
+    <Languages>
+        <string>en</string>
+    </Languages>
+    <GoPGVer>10</GoPGVer>
+    <CustomTypes></CustomTypes>
+    <TableMapping>
+        <news>news,categories,tags</news>
+    </TableMapping>
+</Project>

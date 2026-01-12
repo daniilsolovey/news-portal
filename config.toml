@@ -1,0 +1,17 @@
+# Development TOML configuration file for News Portal
+
+#[Database]
+#URL = "postgres://user:password@postgres:5432/news_portal?sslmode=disable"
+#MaxConns = 5
+#MaxConnsLifetime = "300s"
+
+[Database]
+Addr            = "postgres:5432"
+User            = "user"
+Database        = "news_portal"
+Password        = "password"
+PoolSize        = 5
+
+[App]
+Host = "0.0.0.0"
+Port = 3000

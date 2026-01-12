@@ -2,17 +2,25 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"flag"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"syscall"
 	"time"
 
-	"github.com/daniilsolovey/news-portal/cmd/app/wire"
-	"github.com/daniilsolovey/news-portal/configs"
+	"github.com/BurntSushi/toml"
 	_ "github.com/daniilsolovey/news-portal/docs"
-	"github.com/spf13/viper"
+	"github.com/daniilsolovey/news-portal/internal/app"
+	db "github.com/daniilsolovey/news-portal/internal/db"
+	"github.com/go-pg/pg/v10"
+)
+
+var (
+	flConfig = flag.String("config", "config.toml", "path to TOML configuration file")
+	flDebug  = flag.Bool("debug", false, "enable debug mode")
+	cfg      app.Config
+	lg       *slog.Logger
 )
 
 // @title News Portal API
@@ -21,56 +29,67 @@ import (
 // @host localhost:3000
 // @BasePath /
 
-func init() {
-	configs.Init()
-}
-
 func main() {
-	service, cleanup, err := wire.Initialize()
-	if err != nil {
-		panic(err)
-	}
-	defer cleanup()
+	flag.Parse()
 
+	lg = newLogger(*flDebug)
+	loadConfig()
 	ctx := context.Background()
 
-	// Check connection PostgreSQL
-	if err := service.Postgres.Ping(ctx); err != nil {
-		service.Logger.Error("PostgreSQL not available", "error", err)
-		os.Exit(1)
-	}
+	dbConnection := pg.Connect(&cfg.Database)
+	err := dbConnection.Ping(ctx)
+	exitOnError(err)
+	defer dbConnection.Close()
+	database := db.New(dbConnection)
 
-	engine := service.Engine
-	port := viper.GetInt("HTTP_PORT")
+	service := app.New(cfg, database, lg)
+	runServer(ctx, service)
+}
 
-	// Create HTTP server
-	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Handler: engine,
-	}
+func loadConfig() {
+	_, err := toml.DecodeFile(*flConfig, &cfg)
+	exitOnError(err)
+}
 
-	// Graceful shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+func runServer(appCtx context.Context, service *app.App) {
+	signalCtx, stop := signal.NotifyContext(appCtx, os.Interrupt)
+	defer stop()
 
-	// Run HTTP-server
 	go func() {
-		service.Logger.Info("HTTP server started", "port", port)
-		if err := srv.ListenAndServe(); err != nil &&
-			err != http.ErrServerClosed {
-			service.Logger.Error("HTTP server error", "err", err)
-			os.Exit(1)
+		err := service.Run(appCtx, cfg.App.Port)
+		if err != nil && err != http.ErrServerClosed {
+			lg.Error("service run failed", "error", err)
+			stop()
 		}
 	}()
 
-	<-quit
-	service.Logger.Info("service stopping")
+	lg.Info("service started", "port", cfg.App.Port)
 
-	// Graceful shutdown
+	<-signalCtx.Done()
+	lg.Info("service stopping")
+
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		service.Logger.Error("server forced to shutdown", "err", err)
+	if err := service.GracefulShutdown(shutdownCtx); err != nil {
+		lg.Error("service graceful shutdown failed", "error", err)
+	}
+}
+
+func newLogger(debug bool) *slog.Logger {
+	logLevel := slog.LevelInfo
+	if debug {
+		logLevel = slog.LevelDebug
+	}
+
+	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: logLevel,
+	}))
+}
+
+func exitOnError(err error) {
+	if err != nil {
+		lg.Error("app init failed", "error", err)
+		os.Exit(1)
 	}
 }

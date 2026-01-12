@@ -1,0 +1,1 @@
+-- migration should be applied in this directory, this file exists only for example

@@ -2,112 +2,154 @@ package newsportal
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log/slog"
+	"time"
 
-	postgres "github.com/daniilsolovey/news-portal/internal/db"
+	db "github.com/daniilsolovey/news-portal/internal/db"
+	"github.com/go-pg/pg/v10/orm"
+)
+
+const (
+	defaultPage     = 1
+	defaultPageSize = 10
+	maxPageSize     = 100
+	StatusPublished = 1
 )
 
 type Manager struct {
-	db  *postgres.Repository
-	log *slog.Logger
+	repo db.NewsRepo
 }
 
-func NewNewsUseCase(repo *postgres.Repository, log *slog.Logger) *Manager {
+func NewNewsManager(dbc orm.DB) *Manager {
 	return &Manager{
-		db:  repo,
-		log: log,
+		repo: db.NewNewsRepo(dbc).WithEnabledOnly(),
 	}
 }
 
-// GetAllNews retrieves news with optional filtering by tagID and categoryID, with pagination
+// NewsByFilter retrieves news with optional filtering by tagID and categoryID, with pagination
 // Returns NewsSummary (without content) sorted by publishedAt DESC
-func (u *Manager) GetAllNews(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]News, error) {
-	u.log.Info("receiving all news", "tagID", tagID, "categoryID",
-		categoryID, "page", page, "pageSize", pageSize)
-
-	dbNews, err := u.db.GetAllNews(ctx, tagID, categoryID,
-		page, pageSize)
+func (u *Manager) NewsByFilter(ctx context.Context, tagID, categoryID *int, page, pageSize *int) ([]News, error) {
+	p, ps, err := validatePagination(page, pageSize)
 	if err != nil {
-		u.log.Error("failed to get all news", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("invalid pagination parameters: %w", err)
 	}
 
-	dbNewsWithTags, err := u.attachTagsBatch(ctx, dbNews)
+	status := StatusPublished
+	now := time.Now()
+
+	dbNews, err := u.repo.NewsByFilters(ctx, &db.NewsSearch{
+		CategoryID:     categoryID,
+		CategoryStatus: &status,
+		Tag:            tagID,
+		PublishedAtLE:  &now,
+	},
+		db.NewPager(p, ps),
+		db.WithRelations(db.Columns.News.Category),
+		db.WithSort(db.NewSortField(db.Columns.News.PublishedAt, true)),
+	)
+
 	if err != nil {
-		u.log.Error("failed to attach tags to news", "error", err)
+		return nil, fmt.Errorf("db get news by filters: %w", err)
+	}
+
+	newsList := NewNewsList(dbNews)
+
+	err = u.fillTags(ctx, newsList)
+	if err != nil {
 		return nil, fmt.Errorf("failed to attach tags to news: %w", err)
 	}
 
-	news := make([]News, len(dbNewsWithTags))
-	for i := range dbNewsWithTags {
-		news[i] = NewNewsSummary(dbNewsWithTags[i])
-	}
-
-	return news, nil
+	return newsList, nil
 }
 
-func (u *Manager) GetNewsCount(ctx context.Context, tagID, categoryID *int) (int, error) {
-	u.log.Info("receiving news count", "tagID", tagID, "categoryID", categoryID)
-
-	count, err := u.db.GetNewsCount(ctx, tagID, categoryID)
+func (u *Manager) NewsCount(ctx context.Context, tagID, categoryID *int) (int, error) {
+	status := StatusPublished
+	now := time.Now()
+	count, err := u.repo.CountNews(ctx, &db.NewsSearch{
+		CategoryID:     categoryID,
+		CategoryStatus: &status,
+		Tag:            tagID,
+		PublishedAtLE:  &now,
+	},
+		db.WithRelations(db.Columns.News.Category),
+	)
 	if err != nil {
-		u.log.Error("failed to get news count", "error", err)
-		return 0, err
+		return 0, fmt.Errorf("db get news count: %w", err)
 	}
 
 	return count, nil
 }
 
-func (u *Manager) GetNewsByID(ctx context.Context, newsID int) (*News, error) {
-	u.log.Info("receiving news by ID", "newsID", newsID)
+func (u *Manager) NewsByID(ctx context.Context, newsID int) (*News, error) {
+	status := StatusPublished
+	now := time.Now()
 
-	dbNews, err := u.db.GetNewsByID(ctx, newsID)
+	dbNews, err := u.repo.OneNews(ctx, &db.NewsSearch{
+		ID:             &newsID,
+		CategoryStatus: &status,
+		PublishedAtLE:  &now,
+	},
+		db.WithRelations(db.Columns.News.Category))
 	if err != nil {
-		u.log.Error("failed to get news by ID", "error", err, "newsID", newsID)
-		return nil, err
+		return nil, fmt.Errorf("db get news by id: %w", err)
+	} else if dbNews == nil {
+		return nil, nil
 	}
 
-	dbNewsWithTags, err := u.attachTagsBatch(ctx, []postgres.News{*dbNews})
+	newsList := NewNewsList([]db.News{*dbNews})
+
+	err = u.fillTags(ctx, newsList)
 	if err != nil {
-		u.log.Error("failed to attach tags to news", "error", err)
 		return nil, fmt.Errorf("failed to attach tags to news: %w", err)
 	}
 
-	news := NewNews(dbNewsWithTags[0])
-	return &news, nil
+	return &newsList[0], nil
 }
 
-func (u *Manager) GetAllCategories(ctx context.Context) ([]Category, error) {
-	u.log.Info("receiving all categories")
+func (u *Manager) Categories(ctx context.Context) ([]Category, error) {
+	list, err := u.repo.CategoriesByFilters(ctx, nil, db.PagerNoLimit, db.EnabledOnly())
 
-	dbCategories, err := u.db.GetAllCategories(ctx)
-	if err != nil {
-		u.log.Error("failed to get all categories", "error", err)
-		return nil, err
-	}
-
-	categories := make([]Category, len(dbCategories))
-	for i := range dbCategories {
-		categories[i] = NewCategory(dbCategories[i])
-	}
-
-	return categories, nil
+	return NewCategories(list), err
 }
 
-func (u *Manager) GetAllTags(ctx context.Context) ([]Tag, error) {
-	u.log.Info("receiving all tags")
+func (u *Manager) Tags(ctx context.Context) ([]Tag, error) {
+	list, err := u.repo.TagsByFilters(ctx, nil, db.PagerNoLimit,
+		db.WithSort(db.NewSortField(db.Columns.Tag.Title, false)),
+	)
 
-	dbTags, err := u.db.GetAllTags(ctx)
-	if err != nil {
-		u.log.Error("failed to get all tags", "error", err)
-		return nil, err
+	return NewTags(list), err
+}
+
+func (u *Manager) TagsByIds(ctx context.Context, tagIds []int) ([]Tag, error) {
+	if len(tagIds) == 0 {
+		return []Tag{}, nil
 	}
 
-	tags := make([]Tag, len(dbTags))
-	for i := range dbTags {
-		tags[i] = NewTag(dbTags[i])
+	list, err := u.repo.TagsByFilters(ctx, &db.TagSearch{IDs: tagIds}, db.PagerNoLimit)
+
+	return NewTags(list), err
+}
+
+func validatePagination(page, pageSize *int) (int, int, error) {
+	p := defaultPage
+	if page != nil {
+		if *page <= 0 {
+			return 0, 0, errors.New("invalid page")
+		}
+		p = *page
 	}
 
-	return tags, nil
+	ps := defaultPageSize
+	if pageSize != nil {
+		if *pageSize <= 0 {
+			return 0, 0, errors.New("invalid pageSize")
+		}
+		ps = *pageSize
+		if ps > maxPageSize {
+			ps = maxPageSize
+		}
+	}
+
+	return p, ps, nil
 }

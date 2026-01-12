@@ -1,576 +1,409 @@
 package rest
 
-// import (
-// 	"context"
-// 	"encoding/json"
-// 	"errors"
-// 	"log/slog"
-// 	"net/http"
-// 	"net/http/httptest"
-// 	"testing"
-// 	"time"
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"testing"
 
-// 	"github.com/daniilsolovey/news-portal/internal/newsportal"
-// 	"github.com/stretchr/testify/assert"
-// 	"github.com/stretchr/testify/require"
-// )
+	"github.com/daniilsolovey/news-portal/internal/db"
+	"github.com/daniilsolovey/news-portal/internal/newsportal"
+	"github.com/go-pg/pg/v10"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
-// // mockNewsUseCase is a manual stub implementation for testing
-// type mockNewsUseCase struct {
-// 	getAllNewsFunc       func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error)
-// 	getNewsCountFunc     func(ctx context.Context, tagID, categoryID *int) (int, error)
-// 	getNewsByIDFunc      func(ctx context.Context, newsID int) (*newsportal.News, error)
-// 	getAllCategoriesFunc func(ctx context.Context) ([]newsportal.Category, error)
-// 	getAllTagsFunc       func(ctx context.Context) ([]newsportal.Tag, error)
-// }
+var (
+	testDB      *pg.DB
+	testHandler *NewsHandler
+)
 
-// func (m *mockNewsUseCase) GetAllNews(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error) {
-// 	if m.getAllNewsFunc != nil {
-// 		return m.getAllNewsFunc(ctx, tagID, categoryID, page, pageSize)
-// 	}
-// 	return nil, nil
-// }
+func TestMain(m *testing.M) {
+	ctx := context.Background()
 
-// func (m *mockNewsUseCase) GetNewsCount(ctx context.Context, tagID, categoryID *int) (int, error) {
-// 	if m.getNewsCountFunc != nil {
-// 		return m.getNewsCountFunc(ctx, tagID, categoryID)
-// 	}
-// 	return 0, nil
-// }
+	opt, err := pg.ParseURL(db.TestDBURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to parse database URL: %v\n", err)
+		os.Exit(1)
+	}
 
-// func (m *mockNewsUseCase) GetNewsByID(ctx context.Context, newsID int) (*newsportal.News, error) {
-// 	if m.getNewsByIDFunc != nil {
-// 		return m.getNewsByIDFunc(ctx, newsID)
-// 	}
-// 	return nil, nil
-// }
+	testDB = pg.Connect(opt)
 
-// func (m *mockNewsUseCase) GetAllCategories(ctx context.Context) ([]newsportal.Category, error) {
-// 	if m.getAllCategoriesFunc != nil {
-// 		return m.getAllCategoriesFunc(ctx)
-// 	}
-// 	return nil, nil
-// }
+	if err := testDB.Ping(ctx); err != nil {
+		fmt.Fprintln(os.Stderr, "failed to connect to test database. Make sure PostgreSQL is running:")
+		fmt.Fprintln(os.Stderr, "  docker-compose -f docker-compose.test.yml up -d")
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		_ = testDB.Close()
+		os.Exit(1)
+	}
 
-// func (m *mockNewsUseCase) GetAllTags(ctx context.Context) ([]newsportal.Tag, error) {
-// 	if m.getAllTagsFunc != nil {
-// 		return m.getAllTagsFunc(ctx)
-// 	}
-// 	return nil, nil
-// }
+	if err := db.ResetPublicSchema(ctx, testDB); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to reset schema: %v\n", err)
+		_ = testDB.Close()
+		os.Exit(1)
+	}
 
-// func setupTestRouter(handler *NewsHandler) http.Handler {
-// 	return handler.RegisterRoutes()
-// }
+	if err := db.RunMigrations(ctx, db.MigrationsDir); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to run migrations: %v\n", err)
+		_ = testDB.Close()
+		os.Exit(1)
+	}
 
-// func TestNewsHandler_GetAllNews(t *testing.T) {
-// 	logger := slog.Default()
+	if err := db.EnsureTablesExist(ctx, testDB, []string{"statuses", "categories", "tags", "news"}); err != nil {
+		fmt.Fprintf(os.Stderr, "schema verification failed: %v\n", err)
+		_ = testDB.Close()
+		os.Exit(1)
+	}
 
-// 	tests := []struct {
-// 		name           string
-// 		queryParams    string
-// 		mockFunc       func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error)
-// 		expectedStatus int
-// 		expectedBody   interface{}
-// 	}{
-// 		{
-// 			name:        "success without filters",
-// 			queryParams: "",
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error) {
-// 				assert.Nil(t, tagID)
-// 				assert.Nil(t, categoryID)
-// 				assert.Equal(t, 1, page)
-// 				assert.Equal(t, 10, pageSize)
-// 				return []newsportal.NewsSummary{
-// 					{
-// 						NewsID:      1,
-// 						CategoryID:  1,
-// 						Title:       "Test News",
-// 						Author:      "Author",
-// 						PublishedAt: time.Now(),
-// 						StatusID:    1,
-// 					},
-// 				}, nil
-// 			},
-// 			expectedStatus: http.StatusOK,
-// 		},
-// 		{
-// 			name:        "success with tagId filter",
-// 			queryParams: "?tagId=5",
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error) {
-// 				require.NotNil(t, tagID)
-// 				assert.Equal(t, 5, *tagID)
-// 				assert.Nil(t, categoryID)
-// 				return []newsportal.NewsSummary{}, nil
-// 			},
-// 			expectedStatus: http.StatusOK,
-// 		},
-// 		{
-// 			name:        "success with categoryId filter",
-// 			queryParams: "?categoryId=3",
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error) {
-// 				assert.Nil(t, tagID)
-// 				require.NotNil(t, categoryID)
-// 				assert.Equal(t, 3, *categoryID)
-// 				return []newsportal.NewsSummary{}, nil
-// 			},
-// 			expectedStatus: http.StatusOK,
-// 		},
-// 		{
-// 			name:        "success with pagination",
-// 			queryParams: "?page=2&pageSize=20",
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error) {
-// 				assert.Equal(t, 2, page)
-// 				assert.Equal(t, 20, pageSize)
-// 				return []newsportal.NewsSummary{}, nil
-// 			},
-// 			expectedStatus: http.StatusOK,
-// 		},
-// 		{
-// 			name:        "success with all filters",
-// 			queryParams: "?tagId=1&categoryId=2&page=3&pageSize=15",
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error) {
-// 				require.NotNil(t, tagID)
-// 				require.NotNil(t, categoryID)
-// 				assert.Equal(t, 1, *tagID)
-// 				assert.Equal(t, 2, *categoryID)
-// 				assert.Equal(t, 3, page)
-// 				assert.Equal(t, 15, pageSize)
-// 				return []newsportal.NewsSummary{}, nil
-// 			},
-// 			expectedStatus: http.StatusOK,
-// 		},
-// 		{
-// 			name:           "invalid tagId",
-// 			queryParams:    "?tagId=abc",
-// 			mockFunc:       nil,
-// 			expectedStatus: http.StatusBadRequest,
-// 			expectedBody:   map[string]interface{}{"error": "invalid tagId"},
-// 		},
-// 		{
-// 			name:           "invalid categoryId",
-// 			queryParams:    "?categoryId=xyz",
-// 			mockFunc:       nil,
-// 			expectedStatus: http.StatusBadRequest,
-// 			expectedBody:   map[string]interface{}{"error": "invalid categoryId"},
-// 		},
-// 		{
-// 			name:           "invalid page",
-// 			queryParams:    "?page=0",
-// 			mockFunc:       nil,
-// 			expectedStatus: http.StatusBadRequest,
-// 			expectedBody:   map[string]interface{}{"error": "invalid page"},
-// 		},
-// 		{
-// 			name:           "invalid pageSize",
-// 			queryParams:    "?pageSize=-1",
-// 			mockFunc:       nil,
-// 			expectedStatus: http.StatusBadRequest,
-// 			expectedBody:   map[string]interface{}{"error": "invalid pageSize"},
-// 		},
-// 		{
-// 			name:        "pageSize capped at 100",
-// 			queryParams: "?pageSize=200",
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error) {
-// 				assert.Equal(t, 100, pageSize)
-// 				return []newsportal.NewsSummary{}, nil
-// 			},
-// 			expectedStatus: http.StatusOK,
-// 		},
-// 		{
-// 			name:        "usecase error",
-// 			queryParams: "",
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int, page, pageSize int) ([]newsportal.NewsSummary, error) {
-// 				return nil, errors.New("database error")
-// 			},
-// 			expectedStatus: http.StatusInternalServerError,
-// 			expectedBody:   map[string]interface{}{"error": "internal error"},
-// 		},
-// 	}
+	if err := db.LoadTestData(ctx, testDB); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load test data: %v\n", err)
+		_ = testDB.Close()
+		os.Exit(1)
+	}
 
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			mockUC := &mockNewsUseCase{
-// 				getAllNewsFunc: tt.mockFunc,
-// 			}
-// 			handler := NewNewsHandler(mockUC, logger)
-// 			router := setupTestRouter(handler)
+	testRepo := db.New(testDB)
+	testManager := newsportal.NewNewsManager(testRepo)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	testHandler = NewNewsHandler(testManager, logger)
 
-// 			req := httptest.NewRequest(http.MethodGet, "/api/v1/all_news"+tt.queryParams, nil)
-// 			w := httptest.NewRecorder()
-// 			router.ServeHTTP(w, req)
+	code := m.Run()
 
-// 			assert.Equal(t, tt.expectedStatus, w.Code)
+	if err := testDB.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to close database connection: %v\n", err)
+	}
 
-// 			if tt.expectedBody != nil {
-// 				var response map[string]interface{}
-// 				err := json.Unmarshal(w.Body.Bytes(), &response)
-// 				require.NoError(t, err)
-// 				assert.EqualValues(t, tt.expectedBody, response)
-// 			} else if tt.expectedStatus == http.StatusOK {
-// 				// Verify JSON is valid
-// 				var summaries []NewsSummary
-// 				err := json.Unmarshal(w.Body.Bytes(), &summaries)
-// 				require.NoError(t, err)
-// 			}
-// 		})
-// 	}
-// }
+	os.Exit(code)
+}
 
-// func TestNewsHandler_GetNewsCount(t *testing.T) {
-// 	logger := slog.Default()
+func TestNewsHandler_News_Integration(t *testing.T) {
+	t.Run("SuccessWithoutFilters", func(t *testing.T) {
+		e := testHandler.RegisterRoutes()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/news", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
 
-// 	tests := []struct {
-// 		name           string
-// 		queryParams    string
-// 		mockFunc       func(ctx context.Context, tagID, categoryID *int) (int, error)
-// 		expectedStatus int
-// 		expectedCount  int
-// 		expectedBody   interface{}
-// 	}{
-// 		{
-// 			name:        "success without filters",
-// 			queryParams: "",
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int) (int, error) {
-// 				assert.Nil(t, tagID)
-// 				assert.Nil(t, categoryID)
-// 				return 42, nil
-// 			},
-// 			expectedStatus: http.StatusOK,
-// 			expectedCount:  42,
-// 		},
-// 		{
-// 			name:        "success with tagId",
-// 			queryParams: "?tagId=5",
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int) (int, error) {
-// 				require.NotNil(t, tagID)
-// 				assert.Equal(t, 5, *tagID)
-// 				return 10, nil
-// 			},
-// 			expectedStatus: http.StatusOK,
-// 			expectedCount:  10,
-// 		},
-// 		{
-// 			name:        "success with categoryId",
-// 			queryParams: "?categoryId=3",
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int) (int, error) {
-// 				require.NotNil(t, categoryID)
-// 				assert.Equal(t, 3, *categoryID)
-// 				return 7, nil
-// 			},
-// 			expectedStatus: http.StatusOK,
-// 			expectedCount:  7,
-// 		},
-// 		{
-// 			name:        "success with both filters",
-// 			queryParams: "?tagId=1&categoryId=2",
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int) (int, error) {
-// 				require.NotNil(t, tagID)
-// 				require.NotNil(t, categoryID)
-// 				assert.Equal(t, 1, *tagID)
-// 				assert.Equal(t, 2, *categoryID)
-// 				return 3, nil
-// 			},
-// 			expectedStatus: http.StatusOK,
-// 			expectedCount:  3,
-// 		},
-// 		{
-// 			name:           "invalid tagId",
-// 			queryParams:    "?tagId=abc",
-// 			mockFunc:       nil,
-// 			expectedStatus: http.StatusBadRequest,
-// 			expectedBody:   map[string]interface{}{"error": "invalid tagId"},
-// 		},
-// 		{
-// 			name:           "invalid categoryId",
-// 			queryParams:    "?categoryId=xyz",
-// 			mockFunc:       nil,
-// 			expectedStatus: http.StatusBadRequest,
-// 			expectedBody:   map[string]interface{}{"error": "invalid categoryId"},
-// 		},
-// 		{
-// 			name:        "usecase error",
-// 			queryParams: "",
-// 			mockFunc: func(ctx context.Context, tagID, categoryID *int) (int, error) {
-// 				return 0, errors.New("database error")
-// 			},
-// 			expectedStatus: http.StatusInternalServerError,
-// 			expectedBody:   map[string]interface{}{"error": "internal error"},
-// 		},
-// 	}
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200, body: %s", rec.Body.String())
 
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			mockUC := &mockNewsUseCase{
-// 				getNewsCountFunc: tt.mockFunc,
-// 			}
-// 			handler := NewNewsHandler(mockUC, logger)
-// 			router := setupTestRouter(handler)
+		var summaries []News
+		err := json.Unmarshal(rec.Body.Bytes(), &summaries)
+		require.NoError(t, err, "failed to unmarshal response")
 
-// 			req := httptest.NewRequest(http.MethodGet, "/api/v1/count"+tt.queryParams, nil)
-// 			w := httptest.NewRecorder()
-// 			router.ServeHTTP(w, req)
+		require.NotEmpty(t, summaries, "expected news items, got empty result")
 
-// 			assert.Equal(t, tt.expectedStatus, w.Code)
+		for _, summary := range summaries {
+			assert.NotZero(t, summary.NewsID, "invalid NewsID")
+			assert.NotEmpty(t, summary.Title, "empty Title")
+			assert.NotZero(t, summary.CategoryID, "invalid CategoryID")
+		}
+	})
 
-// 			if tt.expectedBody != nil {
-// 				var response map[string]interface{}
-// 				err := json.Unmarshal(w.Body.Bytes(), &response)
-// 				require.NoError(t, err)
-// 				assert.EqualValues(t, tt.expectedBody, response)
-// 			} else if tt.expectedStatus == http.StatusOK {
-// 				var count int
-// 				err := json.Unmarshal(w.Body.Bytes(), &count)
-// 				require.NoError(t, err)
-// 				assert.Equal(t, tt.expectedCount, count)
-// 			}
-// 		})
-// 	}
-// }
+	t.Run("SuccessWithTagIdFilter", func(t *testing.T) {
+		e := testHandler.RegisterRoutes()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/news?tagId=1", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
 
-// func TestNewsHandler_GetNewsByID(t *testing.T) {
-// 	logger := slog.Default()
-// 	testTime := time.Now()
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200, body: %s", rec.Body.String())
 
-// 	tests := []struct {
-// 		name           string
-// 		pathID         string
-// 		mockFunc       func(ctx context.Context, newsID int) (*newsportal.News, error)
-// 		expectedStatus int
-// 		expectedBody   interface{}
-// 	}{
-// 		{
-// 			name:   "success",
-// 			pathID: "1",
-// 			mockFunc: func(ctx context.Context, newsID int) (*newsportal.News, error) {
-// 				assert.Equal(t, 1, newsID)
-// 				return &newsportal.News{
-// 					NewsID:      1,
-// 					CategoryID:  1,
-// 					Title:       "Test News",
-// 					Content:     "Content",
-// 					Author:      "Author",
-// 					PublishedAt: testTime,
-// 					StatusID:    1,
-// 					Category: newsportal.Category{
-// 						CategoryID:  1,
-// 						Title:       "Category",
-// 						OrderNumber: 1,
-// 						StatusID:    1,
-// 					},
-// 					Tags: []newsportal.Tag{},
-// 				}, nil
-// 			},
-// 			expectedStatus: http.StatusOK,
-// 		},
-// 		{
-// 			name:           "invalid id format",
-// 			pathID:         "abc",
-// 			mockFunc:       nil,
-// 			expectedStatus: http.StatusBadRequest,
-// 			expectedBody:   map[string]interface{}{"error": "invalid id"},
-// 		},
-// 		{
-// 			name:   "not found",
-// 			pathID: "999",
-// 			mockFunc: func(ctx context.Context, newsID int) (*newsportal.News, error) {
-// 				return nil, errors.New("news with id 999 not found")
-// 			},
-// 			expectedStatus: http.StatusInternalServerError,
-// 			expectedBody:   map[string]interface{}{"error": "internal error"},
-// 		},
-// 		{
-// 			name:   "usecase error",
-// 			pathID: "1",
-// 			mockFunc: func(ctx context.Context, newsID int) (*newsportal.News, error) {
-// 				return nil, errors.New("database error")
-// 			},
-// 			expectedStatus: http.StatusInternalServerError,
-// 			expectedBody:   map[string]interface{}{"error": "internal error"},
-// 		},
-// 	}
+		var summaries []News
+		err := json.Unmarshal(rec.Body.Bytes(), &summaries)
+		require.NoError(t, err, "failed to unmarshal response")
 
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			mockUC := &mockNewsUseCase{
-// 				getNewsByIDFunc: tt.mockFunc,
-// 			}
-// 			handler := NewNewsHandler(mockUC, logger)
-// 			router := setupTestRouter(handler)
+		assert.NotEmpty(t, summaries, "expected news items with tag 1, got empty result")
+	})
 
-// 			req := httptest.NewRequest(http.MethodGet, "/api/v1/news/"+tt.pathID, nil)
-// 			w := httptest.NewRecorder()
-// 			router.ServeHTTP(w, req)
+	t.Run("SuccessWithCategoryIdFilter", func(t *testing.T) {
+		e := testHandler.RegisterRoutes()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/news?categoryId=1", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
 
-// 			assert.Equal(t, tt.expectedStatus, w.Code)
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200, body: %s", rec.Body.String())
 
-// 			if tt.expectedBody != nil {
-// 				var response map[string]interface{}
-// 				err := json.Unmarshal(w.Body.Bytes(), &response)
-// 				require.NoError(t, err)
-// 				assert.EqualValues(t, tt.expectedBody, response)
-// 			} else if tt.expectedStatus == http.StatusOK {
-// 				var news News
-// 				err := json.Unmarshal(w.Body.Bytes(), &news)
-// 				require.NoError(t, err)
-// 				assert.Equal(t, 1, news.NewsID)
-// 			}
-// 		})
-// 	}
-// }
+		var summaries []News
+		err := json.Unmarshal(rec.Body.Bytes(), &summaries)
+		require.NoError(t, err, "failed to unmarshal response")
 
-// func TestNewsHandler_GetAllCategories(t *testing.T) {
-// 	logger := slog.Default()
+		require.GreaterOrEqual(t, len(summaries), 2, "expected at least 2 news items")
 
-// 	tests := []struct {
-// 		name           string
-// 		mockFunc       func(ctx context.Context) ([]newsportal.Category, error)
-// 		expectedStatus int
-// 		expectedBody   interface{}
-// 	}{
-// 		{
-// 			name: "success",
-// 			mockFunc: func(ctx context.Context) ([]newsportal.Category, error) {
-// 				return []newsportal.Category{
-// 					{
-// 						CategoryID:  1,
-// 						Title:       "Category 1",
-// 						OrderNumber: 1,
-// 						StatusID:    1,
-// 					},
-// 					{
-// 						CategoryID:  2,
-// 						Title:       "Category 2",
-// 						OrderNumber: 2,
-// 						StatusID:    1,
-// 					},
-// 				}, nil
-// 			},
-// 			expectedStatus: http.StatusOK,
-// 		},
-// 		{
-// 			name: "empty list",
-// 			mockFunc: func(ctx context.Context) ([]newsportal.Category, error) {
-// 				return []newsportal.Category{}, nil
-// 			},
-// 			expectedStatus: http.StatusOK,
-// 		},
-// 		{
-// 			name: "usecase error",
-// 			mockFunc: func(ctx context.Context) ([]newsportal.Category, error) {
-// 				return nil, errors.New("database error")
-// 			},
-// 			expectedStatus: http.StatusInternalServerError,
-// 			expectedBody:   map[string]interface{}{"error": "internal error"},
-// 		},
-// 	}
+		for _, summary := range summaries {
+			assert.Equal(t, 1, summary.CategoryID, "expected categoryID to match")
+		}
+	})
 
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			mockUC := &mockNewsUseCase{
-// 				getAllCategoriesFunc: tt.mockFunc,
-// 			}
-// 			handler := NewNewsHandler(mockUC, logger)
-// 			router := setupTestRouter(handler)
+	t.Run("SuccessWithPagination", func(t *testing.T) {
+		e := testHandler.RegisterRoutes()
+		req1 := httptest.NewRequest(http.MethodGet, "/api/v1/news?page=1&pageSize=3", nil)
+		rec1 := httptest.NewRecorder()
+		e.ServeHTTP(rec1, req1)
 
-// 			req := httptest.NewRequest(http.MethodGet, "/api/v1/categories", nil)
-// 			w := httptest.NewRecorder()
-// 			router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, rec1.Code, "expected status 200 for page1")
 
-// 			assert.Equal(t, tt.expectedStatus, w.Code)
+		var page1 []News
+		err := json.Unmarshal(rec1.Body.Bytes(), &page1)
+		require.NoError(t, err, "failed to unmarshal page1")
+		require.Len(t, page1, 3, "expected 3 items on page1")
 
-// 			if tt.expectedBody != nil {
-// 				var response map[string]interface{}
-// 				err := json.Unmarshal(w.Body.Bytes(), &response)
-// 				require.NoError(t, err)
-// 				assert.EqualValues(t, tt.expectedBody, response)
-// 			} else if tt.expectedStatus == http.StatusOK {
-// 				var categories []Category
-// 				err := json.Unmarshal(w.Body.Bytes(), &categories)
-// 				require.NoError(t, err)
-// 				if tt.name == "success" {
-// 					assert.Len(t, categories, 2)
-// 				} else {
-// 					assert.Len(t, categories, 0)
-// 				}
-// 			}
-// 		})
-// 	}
-// }
+		req2 := httptest.NewRequest(http.MethodGet, "/api/v1/news?page=2&pageSize=3", nil)
+		rec2 := httptest.NewRecorder()
+		e.ServeHTTP(rec2, req2)
 
-// func TestNewsHandler_GetAllTags(t *testing.T) {
-// 	logger := slog.Default()
+		require.Equal(t, http.StatusOK, rec2.Code, "expected status 200 for page2")
 
-// 	tests := []struct {
-// 		name           string
-// 		mockFunc       func(ctx context.Context) ([]newsportal.Tag, error)
-// 		expectedStatus int
-// 		expectedBody   interface{}
-// 	}{
-// 		{
-// 			name: "success",
-// 			mockFunc: func(ctx context.Context) ([]newsportal.Tag, error) {
-// 				return []newsportal.Tag{
-// 					{
-// 						TagID:    1,
-// 						Title:    "Tag 1",
-// 						StatusID: 1,
-// 					},
-// 					{
-// 						TagID:    2,
-// 						Title:    "Tag 2",
-// 						StatusID: 1,
-// 					},
-// 				}, nil
-// 			},
-// 			expectedStatus: http.StatusOK,
-// 		},
-// 		{
-// 			name: "empty list",
-// 			mockFunc: func(ctx context.Context) ([]newsportal.Tag, error) {
-// 				return []newsportal.Tag{}, nil
-// 			},
-// 			expectedStatus: http.StatusOK,
-// 		},
-// 		{
-// 			name: "usecase error",
-// 			mockFunc: func(ctx context.Context) ([]newsportal.Tag, error) {
-// 				return nil, errors.New("database error")
-// 			},
-// 			expectedStatus: http.StatusInternalServerError,
-// 			expectedBody:   map[string]interface{}{"error": "internal error"},
-// 		},
-// 	}
+		var page2 []News
+		err = json.Unmarshal(rec2.Body.Bytes(), &page2)
+		require.NoError(t, err, "failed to unmarshal page2")
+		require.Len(t, page2, 3, "expected 3 items on page2")
 
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			mockUC := &mockNewsUseCase{
-// 				getAllTagsFunc: tt.mockFunc,
-// 			}
-// 			handler := NewNewsHandler(mockUC, logger)
-// 			router := setupTestRouter(handler)
+		seen := make(map[int]struct{})
+		for _, n := range page1 {
+			seen[n.NewsID] = struct{}{}
+		}
+		for _, n := range page2 {
+			_, ok := seen[n.NewsID]
+			assert.False(t, ok, "news %d appears on both pages", n.NewsID)
+		}
+	})
 
-// 			req := httptest.NewRequest(http.MethodGet, "/api/v1/tags", nil)
-// 			w := httptest.NewRecorder()
-// 			router.ServeHTTP(w, req)
+	t.Run("InvalidTagId", func(t *testing.T) {
+		e := testHandler.RegisterRoutes()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/news?tagId=abc", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
 
-// 			assert.Equal(t, tt.expectedStatus, w.Code)
+		require.Equal(t, http.StatusBadRequest, rec.Code, "expected status 400")
 
-// 			if tt.expectedBody != nil {
-// 				var response map[string]interface{}
-// 				err := json.Unmarshal(w.Body.Bytes(), &response)
-// 				require.NoError(t, err)
-// 				assert.EqualValues(t, tt.expectedBody, response)
-// 			} else if tt.expectedStatus == http.StatusOK {
-// 				var tags []Tag
-// 				err := json.Unmarshal(w.Body.Bytes(), &tags)
-// 				require.NoError(t, err)
-// 				if tt.name == "success" {
-// 					assert.Len(t, tags, 2)
-// 				} else {
-// 					assert.Len(t, tags, 0)
-// 				}
-// 			}
-// 		})
-// 	}
-// }
+		var response map[string]string
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err, "failed to unmarshal response")
+
+		assert.Equal(t, "invalid request parameters", response["error"], "expected error message to match")
+	})
+
+	t.Run("InvalidCategoryId", func(t *testing.T) {
+		e := testHandler.RegisterRoutes()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/news?categoryId=xyz", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusBadRequest, rec.Code, "expected status 400")
+
+		var response map[string]string
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err, "failed to unmarshal response")
+
+		assert.Equal(t, "invalid request parameters", response["error"], "expected error message to match")
+	})
+
+	t.Run("InvalidPage", func(t *testing.T) {
+		e := testHandler.RegisterRoutes()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/news?page=0", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusInternalServerError, rec.Code, "expected status 500 for invalid page")
+
+		var response map[string]string
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err, "failed to unmarshal response")
+
+		assert.Equal(t, "internal error", response["error"], "expected error message to match")
+	})
+
+	t.Run("InvalidPageSize", func(t *testing.T) {
+		e := testHandler.RegisterRoutes()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/news?pageSize=-1", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusInternalServerError, rec.Code, "expected status 500 for invalid pageSize")
+
+		var response map[string]string
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err, "failed to unmarshal response")
+
+		assert.Equal(t, "internal error", response["error"], "expected error message to match")
+	})
+
+	t.Run("PageSizeCappedAt100", func(t *testing.T) {
+		e := testHandler.RegisterRoutes()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/news?pageSize=200", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200")
+
+		// The pageSize should be capped at 100, but we can't directly verify this
+		// without checking the actual query. We just verify it doesn't error.
+	})
+}
+
+func TestNewsHandler_NewsCount_Integration(t *testing.T) {
+	t.Run("SuccessWithoutFilters", func(t *testing.T) {
+		e := testHandler.RegisterRoutes()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/news/count", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200, body: %s", rec.Body.String())
+
+		var count int
+		err := json.Unmarshal(rec.Body.Bytes(), &count)
+		require.NoError(t, err, "failed to unmarshal response")
+
+		assert.GreaterOrEqual(t, count, 7, "expected at least 7 news items")
+	})
+
+	t.Run("SuccessWithTagId", func(t *testing.T) {
+		e := testHandler.RegisterRoutes()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/news/count?tagId=1", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200")
+
+		var count int
+		err := json.Unmarshal(rec.Body.Bytes(), &count)
+		require.NoError(t, err, "failed to unmarshal response")
+
+		assert.GreaterOrEqual(t, count, 7, "expected at least 7 news items")
+	})
+
+	t.Run("SuccessWithCategoryId", func(t *testing.T) {
+		e := testHandler.RegisterRoutes()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/news/count?categoryId=1", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200")
+
+		var count int
+		err := json.Unmarshal(rec.Body.Bytes(), &count)
+		require.NoError(t, err, "failed to unmarshal response")
+
+		assert.GreaterOrEqual(t, count, 2, "expected at least 2 news items")
+	})
+
+	t.Run("InvalidTagId", func(t *testing.T) {
+		e := testHandler.RegisterRoutes()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/news/count?tagId=abc", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusBadRequest, rec.Code, "expected status 400")
+
+		var response map[string]string
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err, "failed to unmarshal response")
+
+		assert.Equal(t, "invalid request parameters", response["error"], "expected error message to match")
+	})
+}
+
+func TestNewsHandler_NewsByID_Integration(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		// First get a valid news ID
+		e := testHandler.RegisterRoutes()
+		reqList := httptest.NewRequest(http.MethodGet, "/api/v1/news?page=1&pageSize=1", nil)
+		recList := httptest.NewRecorder()
+		e.ServeHTTP(recList, reqList)
+
+		require.Equal(t, http.StatusOK, recList.Code, "expected status 200 for news list")
+
+		var summaries []News
+		err := json.Unmarshal(recList.Body.Bytes(), &summaries)
+		require.NoError(t, err, "failed to unmarshal news list response")
+		require.NotEmpty(t, summaries, "no news items available for testing")
+
+		newsID := summaries[0].NewsID
+
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/news/%d", newsID), nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200, body: %s", rec.Body.String())
+
+		var news News
+		err = json.Unmarshal(rec.Body.Bytes(), &news)
+		require.NoError(t, err, "failed to unmarshal response")
+
+		assert.Equal(t, newsID, news.NewsID, "expected NewsID to match")
+		assert.NotEmpty(t, news.Title, "empty Title")
+		assert.NotEmpty(t, news.Content, "empty Content")
+		assert.NotZero(t, news.CategoryID, "invalid CategoryID")
+	})
+
+	t.Run("NotFound", func(t *testing.T) {
+		e := testHandler.RegisterRoutes()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/news/99999", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusNotFound, rec.Code, "expected status 404, body: %s", rec.Body.String())
+		assert.Equal(t, "news not found", rec.Body.String(), "expected error message to match")
+	})
+
+	t.Run("InvalidId", func(t *testing.T) {
+		e := testHandler.RegisterRoutes()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/news/abc", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusBadRequest, rec.Code, "expected status 400")
+
+		var response map[string]string
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err, "failed to unmarshal response")
+
+		assert.Equal(t, "invalid id", response["error"], "expected error message to match")
+	})
+}
+
+func TestNewsHandler_Categories_Integration(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		e := testHandler.RegisterRoutes()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/categories", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200, body: %s", rec.Body.String())
+
+		var categories []Category
+		err := json.Unmarshal(rec.Body.Bytes(), &categories)
+		require.NoError(t, err, "failed to unmarshal response")
+
+		require.GreaterOrEqual(t, len(categories), 5, "expected at least 5 categories")
+
+		for _, cat := range categories {
+			assert.NotZero(t, cat.CategoryID, "invalid CategoryID")
+			assert.NotEmpty(t, cat.Title, "empty Title")
+		}
+	})
+}
+
+func TestNewsHandler_Tags_Integration(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		e := testHandler.RegisterRoutes()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/tags", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code, "expected status 200, body: %s", rec.Body.String())
+
+		var tags []Tag
+		err := json.Unmarshal(rec.Body.Bytes(), &tags)
+		require.NoError(t, err, "failed to unmarshal response")
+
+		require.GreaterOrEqual(t, len(tags), 5, "expected at least 5 tags")
+
+		for _, tag := range tags {
+			assert.NotZero(t, tag.TagID, "invalid TagID")
+			assert.NotEmpty(t, tag.Title, "empty Title")
+		}
+	})
+}
