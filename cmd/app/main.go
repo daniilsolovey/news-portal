@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -52,28 +51,27 @@ func loadConfig() {
 	exitOnError(err)
 }
 
-func runServer(ctx context.Context, service *app.App) {
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+func runServer(appCtx context.Context, service *app.App) {
+	signalCtx, stop := signal.NotifyContext(appCtx, os.Interrupt)
+	defer stop()
 
 	go func() {
-		err := service.Run(ctx, cfg.App.Port)
+		err := service.Run(appCtx, cfg.App.Port)
 		if err != nil && err != http.ErrServerClosed {
 			lg.Error("service run failed", "error", err)
-			quit <- syscall.SIGTERM
+			stop()
 		}
 	}()
 
 	lg.Info("service started", "port", cfg.App.Port)
 
-	<-quit
+	<-signalCtx.Done()
 	lg.Info("service stopping")
 
-	shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err := service.GracefulShutdown(shutdownCtx)
-	if err != nil {
+	if err := service.GracefulShutdown(shutdownCtx); err != nil {
 		lg.Error("service graceful shutdown failed", "error", err)
 	}
 }

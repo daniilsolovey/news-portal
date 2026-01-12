@@ -278,9 +278,26 @@ Returns NewsSummary (without content) sorted by publishedAt DESC.`,
 				Description: `Categories retrieves all categories ordered by orderNumber.`,
 				Parameters:  []smd.JSONSchema{},
 				Returns: smd.JSONSchema{
-					Type:       smd.Object,
-					TypeName:   "Categories",
-					Properties: smd.PropertyList{},
+					Type:     smd.Array,
+					TypeName: "[]Category",
+					Items: map[string]string{
+						"$ref": "#/definitions/Category",
+					},
+					Definitions: map[string]smd.Definition{
+						"Category": {
+							Type: "object",
+							Properties: smd.PropertyList{
+								{
+									Name: "categoryId",
+									Type: smd.Integer,
+								},
+								{
+									Name: "title",
+									Type: smd.String,
+								},
+							},
+						},
+					},
 				},
 				Errors: map[int]string{
 					404: "categories not found",
@@ -291,9 +308,30 @@ Returns NewsSummary (without content) sorted by publishedAt DESC.`,
 				Description: `Tags retrieves all tags ordered by title.`,
 				Parameters:  []smd.JSONSchema{},
 				Returns: smd.JSONSchema{
-					Type:       smd.Object,
-					TypeName:   "Tags",
-					Properties: smd.PropertyList{},
+					Type:     smd.Array,
+					TypeName: "[]Tag",
+					Items: map[string]string{
+						"$ref": "#/definitions/Tag",
+					},
+					Definitions: map[string]smd.Definition{
+						"Tag": {
+							Type: "object",
+							Properties: smd.PropertyList{
+								{
+									Name: "tagId",
+									Type: smd.Integer,
+								},
+								{
+									Name: "title",
+									Type: smd.String,
+								},
+								{
+									Name: "statusId",
+									Type: smd.Integer,
+								},
+							},
+						},
+					},
 				},
 				Errors: map[int]string{
 					404: "tags not found",

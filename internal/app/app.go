@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"path/filepath"
 	"strings"
 
@@ -12,15 +11,15 @@ import (
 	"github.com/daniilsolovey/news-portal/internal/newsportal"
 	"github.com/daniilsolovey/news-portal/internal/rpc"
 	"github.com/go-pg/pg/v10"
+	"github.com/labstack/echo/v4"
 	"github.com/vmkteam/zenrpc/v2"
 )
 
 type App struct {
-	DB      db.DB
-	Logger  *slog.Logger
-	Server  *http.Server
-	Handler http.Handler
-	Config  Config
+	DB     db.DB
+	Logger *slog.Logger
+	Echo   *echo.Echo
+	Config Config
 }
 
 type Config struct {
@@ -49,39 +48,40 @@ func New(cfg Config, database db.DB, logger *slog.Logger) *App {
 
 func (a *App) Run(ctx context.Context, port int) error {
 	addr := fmt.Sprintf(":%d", port)
-	a.Server = &http.Server{
-		Addr:    addr,
-		Handler: a.Handler,
-	}
-	return a.Server.ListenAndServe()
+	return a.Echo.Start(addr)
 }
 
 func (a *App) GracefulShutdown(ctx context.Context) error {
-	err := a.Server.Shutdown(ctx)
-	if err == http.ErrServerClosed {
-		return nil
+	a.Logger.Info("shutting down server")
+	err := a.Echo.Shutdown(ctx)
+	if err != nil {
+		a.Logger.Error("failed to shutdown server", "error", err)
+		return err
 	}
-	return err
+
+	a.Logger.Info("server shutdown complete")
+	return nil
 }
 
 func (a *App) setupRoutes(rpcServer *zenrpc.Server) {
-	mux := http.NewServeMux()
+	e := echo.New()
 
-	mux.HandleFunc("/rpc", func(w http.ResponseWriter, r *http.Request) { rpcServer.ServeHTTP(w, r) })
-	mux.HandleFunc("/doc/", zenrpc.SMDBoxHandler)
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./frontend"))))
-	mux.HandleFunc("/", a.handleFrontend)
+	e.Any("/rpc", echo.WrapHandler(rpcServer))
 
-	a.Handler = mux
+	e.Any("/doc/*", func(c echo.Context) error {
+		zenrpc.SMDBoxHandler(c.Response().Writer, c.Request())
+		return nil
+	})
+
+	e.Static("/static", "./frontend")
+
+	e.GET("/*", a.handleFrontend)
+
+	a.Echo = e
 }
 
-func (a *App) handleFrontend(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	p := r.URL.Path
+func (a *App) handleFrontend(c echo.Context) error {
+	p := c.Request().URL.Path
 	if p == "/" || p == "/index.html" {
 		p = "index.html"
 	}
@@ -89,5 +89,5 @@ func (a *App) handleFrontend(w http.ResponseWriter, r *http.Request) {
 	p = strings.TrimPrefix(p, "/")
 	filePath := filepath.Join("./frontend", p)
 
-	http.ServeFile(w, r, filePath)
+	return c.File(filePath)
 }

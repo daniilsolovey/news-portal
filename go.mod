@@ -11,6 +11,7 @@ require (
 	github.com/pressly/goose/v3 v3.26.0
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag v1.8.12
+	github.com/vmkteam/zenrpc-middleware v1.3.2
 	github.com/vmkteam/zenrpc/v2 v2.3.1
 )
 
@@ -58,7 +59,6 @@ require (
 	github.com/vmihailenco/tagparser v0.1.2 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/vmkteam/appkit v0.1.0 // indirect
-	github.com/vmkteam/zenrpc-middleware v1.3.2 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	golang.org/x/crypto v0.46.0 // indirect

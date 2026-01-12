@@ -72,7 +72,7 @@ func (s *NewsService) ByID(ctx context.Context, id int) (*News, error) {
 //
 //zenrpc:404 categories not found
 //zenrpc:500 internal server error
-func (s *NewsService) Categories(ctx context.Context) (Categories, error) {
+func (s *NewsService) Categories(ctx context.Context) ([]Category, error) {
 	categories, err := s.manager.Categories(ctx)
 	if err != nil {
 		return nil, err
@@ -89,7 +89,7 @@ func (s *NewsService) Categories(ctx context.Context) (Categories, error) {
 //
 //zenrpc:404 tags not found
 //zenrpc:500 internal server error
-func (s *NewsService) Tags(ctx context.Context) (Tags, error) {
+func (s *NewsService) Tags(ctx context.Context) ([]Tag, error) {
 	tags, err := s.manager.Tags(ctx)
 	if err != nil {
 		return nil, err
